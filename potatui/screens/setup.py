@@ -13,6 +13,7 @@ from textual.widgets import (
     Header,
     Input,
     Label,
+    Select,
     Static,
 )
 
@@ -71,6 +72,16 @@ class SetupScreen(Screen):
         text-style: italic;
     }
 
+    #state-row {
+        display: none;
+        height: auto;
+        margin-bottom: 1;
+    }
+
+    #state-row.visible {
+        display: block;
+    }
+
     #error-msg {
         color: $error;
         height: auto;
@@ -87,7 +98,8 @@ class SetupScreen(Screen):
     def __init__(self, config: Config) -> None:
         super().__init__()
         self.config = config
-        self._park_names: dict[str, str] = {}  # ref → name, populated by live lookup
+        self._park_names: dict[str, str] = {}       # ref → name
+        self._park_infos: dict[str, object] = {}    # ref → ParkInfo (for multi-state detection)
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -139,6 +151,15 @@ class SetupScreen(Screen):
                     classes="field-input",
                 )
 
+            with Horizontal(classes="field-row", id="state-row"):
+                yield Label("Your State:", classes="field-label")
+                yield Select(
+                    [],
+                    allow_blank=True,
+                    id="my_state",
+                    classes="field-input",
+                )
+
             yield Static("", id="error-msg")
 
             with Horizontal(id="btn-row"):
@@ -163,9 +184,35 @@ class SetupScreen(Screen):
         for ref in refs:
             if ref not in self._park_names:
                 info = await lookup_park(ref, self.config.pota_api_base)
+                self._park_infos[ref] = info
                 self._park_names[ref] = info.name if info else "Unknown park"
             parts.append(f"{ref}: {self._park_names[ref]}")
         display.update("  |  ".join(parts))
+        self._update_state_field(refs)
+
+    def _update_state_field(self, refs: list[str]) -> None:
+        """Show the state dropdown if any looked-up park spans multiple states."""
+        all_locations: list[str] = []
+        is_multi = False
+        for ref in refs:
+            info = self._park_infos.get(ref)
+            if info and info.locations:
+                if len(info.locations) > 1:
+                    is_multi = True
+                for loc in info.locations:
+                    if loc not in all_locations:
+                        all_locations.append(loc)
+
+        state_row = self.query_one("#state-row")
+        state_sel = self.query_one("#my_state", Select)
+        if is_multi:
+            state_row.add_class("visible")
+            state_sel.set_options([(s, s) for s in all_locations])
+            if len(all_locations) == 1:
+                state_sel.value = all_locations[0]
+        else:
+            state_row.remove_class("visible")
+            state_sel.set_options([])
 
     @on(Button.Pressed, "#btn-start")
     def on_start(self) -> None:
@@ -220,12 +267,29 @@ class SetupScreen(Screen):
 
         # Fetch any refs that weren't already looked up live.
         park_names: dict[str, str] = {}
+        newly_fetched = False
         for ref in refs:
             if ref in self._park_names:
                 park_names[ref] = self._park_names[ref]
             else:
                 info = await lookup_park(ref, self.config.pota_api_base)
-                park_names[ref] = info.name if info else "Unknown (API unavailable)"
+                self._park_infos[ref] = info
+                self._park_names[ref] = info.name if info else "Unknown (API unavailable)"
+                park_names[ref] = self._park_names[ref]
+                newly_fetched = True
+
+        # If we just fetched new parks, update the state field now
+        if newly_fetched:
+            self._update_state_field(refs)
+
+        state_sel = self.query_one("#my_state", Select)
+        my_state = "" if state_sel.value is Select.BLANK else str(state_sel.value)
+
+        # If the state row is visible a selection is required
+        state_row = self.query_one("#state-row")
+        if "visible" in state_row.classes and not my_state:
+            error.update("Select your state for this multi-state park.")
+            return
 
         session = Session(
             operator=callsign,
@@ -236,6 +300,7 @@ class SetupScreen(Screen):
             antenna=antenna,
             power_w=power_w,
             start_time=datetime.utcnow(),
+            my_state=my_state,
         )
 
         from potatui.screens.logger import LoggerScreen

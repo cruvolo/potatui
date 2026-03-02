@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import httpx
@@ -16,8 +16,9 @@ class ParkInfo:
     reference: str
     name: str
     location: str = ""
-    state: str = ""   # 2-letter abbreviation when available
+    state: str = ""                          # primary 2-letter abbreviation
     grid: str = ""
+    locations: list[str] = field(default_factory=list)  # all abbrevs (multi-state parks)
 
 
 # US state name → 2-letter abbreviation
@@ -68,10 +69,20 @@ async def lookup_park(ref: str, base_url: str) -> Optional[ParkInfo]:
             if resp.status_code == 200:
                 data = resp.json()
                 location = data.get("locationName", "")
-                # Try API-provided abbreviation first, then map from full name
+                # Parse locationDesc ("US-VA,US-NC") into list of 2-letter abbrevs
+                loc_desc = data.get("locationDesc", "")
+                locations = []
+                for part in loc_desc.split(","):
+                    part = part.strip()
+                    if "-" in part:
+                        locations.append(part.split("-", 1)[1])
+                    elif part:
+                        locations.append(part)
+                # Primary state: first parsed location, then API fields, then name map
                 state = (
-                    data.get("stateAbbrev")
-                    or data.get("state")
+                    (locations[0] if locations else "")
+                    or data.get("stateAbbrev", "")
+                    or data.get("state", "")
                     or _US_STATE_ABBREV.get(location, "")
                 )
                 return ParkInfo(
@@ -80,6 +91,7 @@ async def lookup_park(ref: str, base_url: str) -> Optional[ParkInfo]:
                     location=location,
                     state=state.strip(),
                     grid=data.get("grid6", data.get("grid4", "")),
+                    locations=locations,
                 )
     except Exception:
         pass

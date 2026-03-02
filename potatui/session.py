@@ -47,6 +47,7 @@ class Session:
     antenna: str
     power_w: int
     start_time: datetime
+    my_state: str = ""   # MY_STATE for ADIF (required when park spans multiple states)
     qsos: list[QSO] = field(default_factory=list)
 
     # Runtime state (not serialized)
@@ -118,6 +119,7 @@ class Session:
             "antenna": self.antenna,
             "power_w": self.power_w,
             "start_time": self.start_time.isoformat(),
+            "my_state": self.my_state,
             "qsos": [q.to_dict() for q in self.qsos],
         }
 
@@ -130,6 +132,7 @@ class Session:
         d = dict(d)
         d["start_time"] = datetime.fromisoformat(d["start_time"])
         d["qsos"] = [QSO.from_dict(q) for q in d.get("qsos", [])]
+        d.setdefault("my_state", "")
         return cls(**d)
 
     @classmethod

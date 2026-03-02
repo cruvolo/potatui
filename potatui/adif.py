@@ -39,7 +39,7 @@ def _field(tag: str, value: str) -> str:
     return f"<{tag}:{len(value)}>{value}"
 
 
-def _qso_to_adif(qso: QSO, operator: str, park_ref: str) -> str:
+def _qso_to_adif(qso: QSO, operator: str, park_ref: str, my_state: str = "") -> str:
     """Convert a QSO to an ADIF record string."""
     date_str = qso.timestamp_utc.strftime("%Y%m%d")
     time_str = qso.timestamp_utc.strftime("%H%M%S")
@@ -63,6 +63,8 @@ def _qso_to_adif(qso: QSO, operator: str, park_ref: str) -> str:
         _field("MY_SIG_INFO", park_ref.upper()),
     ]
 
+    if my_state:
+        parts.append(_field("MY_STATE", my_state.upper()))
     if submode:
         parts.append(_field("SUBMODE", submode))
     if qso.name:
@@ -99,28 +101,33 @@ def _adif_header() -> str:
     )
 
 
-def write_adif(session: Session, path: Path) -> None:
-    """Write the complete ADIF file for the session (overwrites)."""
+def write_adif(session: Session, path: Path, park_ref: Optional[str] = None) -> None:
+    """Write the complete ADIF file for the session (overwrites).
+
+    park_ref overrides session.active_park_ref in MY_SIG_INFO, allowing one
+    ADIF per park for multi-park (2fer/3fer) activations.
+    """
+    effective_ref = park_ref or session.active_park_ref
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         f.write(_adif_header())
         for qso in session.qsos:
-            f.write(_qso_to_adif(qso, session.operator, session.active_park_ref))
+            f.write(_qso_to_adif(qso, session.operator, effective_ref, session.my_state))
 
 
-def append_qso_adif(qso: QSO, operator: str, park_ref: str, path: Path) -> None:
+def append_qso_adif(qso: QSO, operator: str, park_ref: str, path: Path, my_state: str = "") -> None:
     """Append a single QSO to an ADIF file, writing header if new."""
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
         with open(path, "w") as f:
             f.write(_adif_header())
     with open(path, "a") as f:
-        f.write(_qso_to_adif(qso, operator, park_ref))
+        f.write(_qso_to_adif(qso, operator, park_ref, my_state))
 
 
-def session_file_stem(session: Session) -> str:
+def session_file_stem(session: Session, park_ref: Optional[str] = None) -> str:
     """Return the base filename stem for session files."""
     date = session.start_time.strftime("%Y%m%d")
     call = session.operator.upper().replace("/", "-")
-    park = session.active_park_ref.upper().replace("/", "-")
+    park = (park_ref or session.active_park_ref).upper().replace("/", "-")
     return f"{date}-{call}-{park}"

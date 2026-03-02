@@ -620,7 +620,7 @@ class LoggerScreen(Screen):
     }
 
     #p2p-field {
-        width: 16;
+        width: 32;
     }
 
     #rst-sent-field {
@@ -712,13 +712,15 @@ class LoggerScreen(Screen):
         from potatui.qrz import QRZClient
         self._qrz = QRZClient(config.qrz_username, config.qrz_password)
         self._park_latlon: tuple[float, float] | None = None
-        self._log_path = self._make_log_path()
+        self._log_paths = self._make_log_paths()
         self._json_path = self._make_json_path()
 
-    def _make_log_path(self):
+    def _make_log_paths(self):
         from pathlib import Path
-        stem = session_file_stem(self.session)
-        return self.config.log_dir_path / f"{stem}.adi"
+        return [
+            self.config.log_dir_path / f"{session_file_stem(self.session, ref)}.adi"
+            for ref in self.session.park_refs
+        ]
 
     def _make_json_path(self):
         from pathlib import Path
@@ -756,7 +758,7 @@ class LoggerScreen(Screen):
                 yield Input(value=_rst_default(self.mode), id="f-rst-rcvd", max_length=3, select_on_focus=False)
             with Vertical(classes="form-field", id="p2p-field"):
                 yield Label("P2P Park", classes="form-label")
-                yield Input(value="US-", id="f-p2p", max_length=12, select_on_focus=False)
+                yield Input(value="US-", id="f-p2p", select_on_focus=False)
             with Vertical(classes="form-field"):
                 yield Label("Name", classes="form-label")
                 yield Input(placeholder="optional", id="f-name")
@@ -861,7 +863,7 @@ class LoggerScreen(Screen):
         self.query_one("#hdr-utc", Static).update(utc_str)
         self.query_one("#hdr-elapsed", Static).update(elapsed_str)
 
-    @work(exclusive=True)
+    @work(exclusive=True, group="flrig-poll")
     async def _poll_flrig(self) -> None:
         freq = self.flrig.get_frequency()
         mode = self.flrig.get_mode()
@@ -955,32 +957,52 @@ class LoggerScreen(Screen):
             pass
         self._update_radio_display()
 
-        # P2P from dedicated field
-        p2p_ref = self.query_one("#f-p2p", Input).value.strip().upper()
-        is_p2p = bool(p2p_ref)
+        # P2P — parse comma-separated refs; one QSO per valid park ref
+        from potatui.pota_api import is_valid_park_ref
+        raw_p2p = self.query_one("#f-p2p", Input).value.strip().upper()
+        p2p_refs = [r.strip() for r in raw_p2p.split(",") if is_valid_park_ref(r.strip())]
 
-        qso = self.session.add_qso(
-            callsign=callsign,
-            rst_sent=rst_sent,
-            rst_rcvd=rst_rcvd,
-            freq_khz=self.freq_khz,
-            band=self.band,
-            mode=self.mode,
-            name=name,
-            state=state,
-            notes=notes,
-            is_p2p=is_p2p,
-            p2p_ref=p2p_ref,
-        )
+        new_qsos: list[QSO] = []
+        if p2p_refs:
+            for ref in p2p_refs:
+                new_qsos.append(self.session.add_qso(
+                    callsign=callsign,
+                    rst_sent=rst_sent,
+                    rst_rcvd=rst_rcvd,
+                    freq_khz=self.freq_khz,
+                    band=self.band,
+                    mode=self.mode,
+                    name=name,
+                    state=state,
+                    notes=notes,
+                    is_p2p=True,
+                    p2p_ref=ref,
+                ))
+        else:
+            new_qsos.append(self.session.add_qso(
+                callsign=callsign,
+                rst_sent=rst_sent,
+                rst_rcvd=rst_rcvd,
+                freq_khz=self.freq_khz,
+                band=self.band,
+                mode=self.mode,
+                name=name,
+                state=state,
+                notes=notes,
+                is_p2p=False,
+                p2p_ref="",
+            ))
 
-        # Rebuild table so newest QSO appears at top
+        # Rebuild table so newest QSO(s) appear at top
         self._rebuild_table()
 
-        # Persist
-        try:
-            append_qso_adif(qso, self.session.operator, self.session.active_park_ref, self._log_path)
-        except Exception as e:
-            self.notify(f"ADIF write error: {e}", severity="error")
+        # Persist — append each new QSO to every park's ADIF file
+        for park_ref, log_path in zip(self.session.park_refs, self._log_paths):
+            for qso in new_qsos:
+                try:
+                    append_qso_adif(qso, self.session.operator, park_ref, log_path, self.session.my_state)
+                except Exception as e:
+                    self.notify(f"ADIF write error: {e}", severity="error")
         self._save_session()
         self._update_qso_count()
 
@@ -1026,7 +1048,7 @@ class LoggerScreen(Screen):
             return False
         return any(c.isdigit() for c in cs) and sum(c.isalpha() for c in cs) >= 2
 
-    @work(exclusive=True)
+    @work(exclusive=True, group="qrz-lookup")
     async def _lookup_qrz(self, callsign: str) -> None:
         # Debounce: wait for typing to pause before hitting QRZ
         await asyncio.sleep(1.0)
@@ -1134,40 +1156,64 @@ class LoggerScreen(Screen):
 
     @on(Input.Submitted, "#f-freq")
     def on_freq_submitted(self) -> None:
-        """Commit frequency and move focus to callsign."""
-        self.query_one("#f-callsign", Input).focus()
+        """Log the QSO when Enter is pressed in the frequency field."""
+        self._log_qso()
 
     @on(Input.Changed, "#f-p2p")
     def on_p2p_changed(self, event: Input.Changed) -> None:
-        ref = event.value.strip().upper()
-        if not ref:
+        raw = event.value.strip().upper()
+        if not raw:
             self._clear_p2p_info()
             return
         from potatui.pota_api import is_valid_park_ref
-        if is_valid_park_ref(ref):
-            self._lookup_p2p_park(ref)
+        parts = [p.strip() for p in raw.split(",") if p.strip()]
+        if not parts:
+            self._clear_p2p_info()
+            return
+        valid_refs = [p for p in parts if is_valid_park_ref(p)]
+        if valid_refs:
+            self._lookup_p2p_park(valid_refs, raw)
         else:
-            self._set_p2p_info(f"  P2P: {ref} (incomplete…)", warn=True)
+            self._set_p2p_info(f"  P2P: {parts[-1]} (incomplete…)", warn=True)
 
     @on(Input.Submitted, "#f-p2p")
     def on_p2p_submitted(self) -> None:
         self._log_qso()
 
-    @work(exclusive=True)
-    async def _lookup_p2p_park(self, ref: str) -> None:
+    @work(exclusive=True, group="p2p-lookup")
+    async def _lookup_p2p_park(self, refs: list[str], raw: str) -> None:
         from potatui.pota_api import lookup_park
-        self._set_p2p_info(f"  P2P: {ref} — looking up…", warn=False)
-        info = await lookup_park(ref, self.config.pota_api_base)
-        # Check the field still has the same ref (user may have kept typing)
+        self._set_p2p_info(f"  P2P: {', '.join(refs)} — looking up…", warn=False)
+
+        results = [(ref, await lookup_park(ref, self.config.pota_api_base)) for ref in refs]
+
+        # Discard if the field changed while we were looking up
         current = self.query_one("#f-p2p", Input).value.strip().upper()
-        if current != ref:
+        if current != raw:
             return
-        if info:
-            self._set_p2p_info(f"  P2P: {info.reference}  {info.name}  ({info.location})", warn=False)
-            if info.state:
-                self.query_one("#f-state", Input).value = info.state
-        else:
-            self._set_p2p_info(f"  P2P: {ref} — park not found", warn=True)
+
+        segments = []
+        first_state: str | None = None
+        has_error = False
+        for ref, info in results:
+            if info:
+                segments.append(f"{info.reference}  {info.name}  ({info.location})")
+                if first_state is None and info.state:
+                    first_state = info.state
+            else:
+                segments.append(f"{ref} — not found")
+                has_error = True
+
+        # Flag any parts that are still incomplete (in the field but not yet valid)
+        all_parts = [p.strip() for p in raw.split(",") if p.strip()]
+        for part in all_parts:
+            if part not in refs:
+                segments.append(f"{part} (incomplete)")
+                has_error = True
+
+        self._set_p2p_info("  " + "  ·  ".join(segments), warn=has_error)
+        if first_state:
+            self.query_one("#f-state", Input).value = first_state
 
     def _set_p2p_info(self, text: str, warn: bool) -> None:
         bar = self.query_one("#p2p-info-bar", Static)
@@ -1237,7 +1283,8 @@ class LoggerScreen(Screen):
                 self._rebuild_table()
                 self._save_session()
                 try:
-                    write_adif(self.session, self._log_path)
+                    for park_ref, log_path in zip(self.session.park_refs, self._log_paths):
+                        write_adif(self.session, log_path, park_ref)
                 except Exception as e:
                     self.notify(f"ADIF rewrite error: {e}", severity="error")
 
@@ -1323,9 +1370,13 @@ class LoggerScreen(Screen):
         def on_confirm(confirmed: bool) -> None:
             if confirmed:
                 try:
-                    write_adif(self.session, self._log_path)
+                    for park_ref, log_path in zip(self.session.park_refs, self._log_paths):
+                        write_adif(self.session, log_path, park_ref)
                     self._save_session()
-                    self.notify(f"Session saved to {self._log_path}", severity="information")
+                    if len(self._log_paths) == 1:
+                        self.notify(f"Session saved to {self._log_paths[0]}", severity="information")
+                    else:
+                        self.notify(f"Session saved — {len(self._log_paths)} ADIF files written", severity="information")
                 except Exception as e:
                     self.notify(f"Export error: {e}", severity="error")
                 self.app.exit()
@@ -1354,7 +1405,8 @@ class LoggerScreen(Screen):
                 self._update_qso_count()
                 self._save_session()
                 try:
-                    write_adif(self.session, self._log_path)
+                    for park_ref, log_path in zip(self.session.park_refs, self._log_paths):
+                        write_adif(self.session, log_path, park_ref)
                 except Exception as e:
                     self.notify(f"ADIF rewrite error: {e}", severity="error")
 
