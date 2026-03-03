@@ -94,6 +94,7 @@ class SettingsScreen(Screen):
         color: $success;
         padding: 0 1;
         height: auto;
+        width: 1fr;
     }
     """
 
@@ -195,9 +196,8 @@ class SettingsScreen(Screen):
 
             with Horizontal(id="btn-row"):
                 yield Static("", id="save-status")
-                if not self.first_run:
-                    yield Button("Cancel", id="btn-cancel")
-                yield Button("Save Settings", variant="primary", id="btn-save")
+                yield Button("Cancel", id="btn-cancel")
+                yield Button("Save", variant="primary", id="btn-save")
 
         yield Footer()
 
@@ -270,8 +270,7 @@ class SettingsScreen(Screen):
     # ── actions / events ───────────────────────────────────────────────
 
     def action_cancel(self) -> None:
-        if not self.first_run:
-            self.dismiss()
+        self.dismiss()
 
     def action_save(self) -> None:
         self._do_save()
