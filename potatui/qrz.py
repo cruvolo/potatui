@@ -17,7 +17,7 @@ _QRZ_NS = "http://xmldata.qrz.com"
 @dataclass
 class QRZInfo:
     callsign: str
-    fname: str      # First name only
+    fname: str      # Full first name (may include nickname in parens)
     name: str       # "First Last"
     city: str       # addr2
     state: str      # USA state
@@ -146,7 +146,7 @@ class QRZClient:
             def t(tag: str) -> str:
                 return self._text(call_el, tag)
 
-            fname = t("fname").split()[0] if t("fname") else ""
+            fname = t("fname")
             lname = t("name")
             name = f"{fname} {lname}".strip() if (fname or lname) else ""
 

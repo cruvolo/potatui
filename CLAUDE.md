@@ -13,6 +13,7 @@ Built with Textual 8, httpx, xmlrpc.client.
 
 ## Key Constraints
 
+- **Cross-platform**: All code must run on Windows, macOS, and Linux. No hardcoded Unix paths (e.g. `~/.config`). Use `platformdirs` for platform-appropriate config/data directories (`user_config_dir`, `user_data_dir`). Use `pathlib.Path` for all file paths — never string concatenation with `/` or `\`. No subprocess/shell commands that are OS-specific.
 - **Textual 8**: `push_screen` / `pop_screen` are `App`-only. Always use `self.app.push_screen()` from inside a `Screen` subclass — never `self.push_screen()`.
 - **Textual 8**: Use `self.dismiss()` (not `self.app.pop_screen()`) inside a `Screen` when a push_screen callback needs to fire.
 - **Static width in Horizontal containers**: always set `width: auto` on Static widgets inside Horizontal layouts or they will consume all remaining space.
@@ -147,7 +148,7 @@ LoggerScreen(session, config, park_names, mode="SSB", freq_khz=14200.0)
 - Callsign results cached per-session in `_cache` dict — no duplicate API calls
 - XML namespace: `http://xmldata.qrz.com` — `_find()` tries with and without namespace
 - `QRZInfo` fields: `callsign`, `fname`, `name`, `city`, `state`, `country`, `grid`, `lat`, `lon`
-  - `fname` = first word of first name field (strips middle initial)
+  - `fname` = full first name field from QRZ (includes nickname in parens if present)
   - `state` = 2-letter US state abbreviation from QRZ
 
 Logger integration (`#qrz-info-bar` strip above `#p2p-info-bar`):
@@ -158,7 +159,7 @@ Logger integration (`#qrz-info-bar` strip above `#p2p-info-bar`):
 - Shows: `Callsign  ·  Name  ·  City, State  ·  Grid: XX00  ·  NE 847 mi`
 - Unit controlled by `config.distance_unit` ("mi" or "km", default "mi"); converts km×0.621371
 - Direction shown as 16-point cardinal before the distance value
-- Auto-fills `#f-name` with `info.fname` if empty
+- Auto-fills `#f-name` with `info.name` (full "First Last" name, includes nickname if in QRZ) if empty
 - Auto-fills `#f-state` with `info.state` if empty **and** P2P field is still at default `"US-"`
 - P2P park lookup overrides `#f-state` with `info.state` (2-letter abbrev from `_US_STATE_ABBREV`)
 - Hidden when empty, `pending` class (italic) while fetching, `notfound` class if not found

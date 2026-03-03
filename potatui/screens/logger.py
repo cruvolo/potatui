@@ -1085,10 +1085,10 @@ class LoggerScreen(Screen):
             return
 
         # Auto-fill name and state fields if empty (state only if P2P not entered)
-        if info.fname:
+        if info.name:
             name_inp = self.query_one("#f-name", Input)
             if not name_inp.value.strip():
-                name_inp.value = info.fname
+                name_inp.value = info.name
 
         p2p_val = self.query_one("#f-p2p", Input).value.strip().upper()
         state_inp = self.query_one("#f-state", Input)

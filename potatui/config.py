@@ -1,4 +1,4 @@
-"""Load and save configuration from ~/.config/potatui/config.toml."""
+"""Load and save configuration from the platform-appropriate config directory."""
 
 from __future__ import annotations
 
@@ -6,12 +6,14 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from platformdirs import user_config_dir
+
 if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib  # type: ignore[no-reuse-imports]
 
-CONFIG_DIR = Path.home() / ".config" / "potatui"
+CONFIG_DIR = Path(user_config_dir("potatui", appauthor=False))
 CONFIG_PATH = CONFIG_DIR / "config.toml"
 
 # ---------------------------------------------------------------------------
@@ -21,7 +23,6 @@ CONFIG_PATH = CONFIG_DIR / "config.toml"
 DEFAULT_CONFIG_TOML = """\
 # ============================================================
 #  Potatui configuration
-#  ~/.config/potatui/config.toml
 #
 #  Edit this file to pre-populate the activation setup screen.
 #  All fields are optional — Potatui will still run without
@@ -184,7 +185,6 @@ def save_config(cfg: Config) -> None:
     content = f"""\
 # ============================================================
 #  Potatui configuration
-#  ~/.config/potatui/config.toml
 #
 #  Edit this file to pre-populate the activation setup screen.
 #  All fields are optional — Potatui will still run without

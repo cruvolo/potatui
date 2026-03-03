@@ -12,6 +12,7 @@ license = { text = "MIT" }
 dependencies = [
     "textual>=0.60",
     "httpx>=0.25",
+    "platformdirs>=4.0",
     "tomli>=2.0; python_version < '3.11'",
 ]
 
