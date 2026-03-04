@@ -138,9 +138,10 @@ class EditQSOModal(ModalScreen[Optional[dict]]):
     }
     """
 
-    def __init__(self, qso: QSO) -> None:
+    def __init__(self, qso: QSO, qrz=None) -> None:
         super().__init__()
         self.qso = qso
+        self.qrz = qrz
 
     def compose(self) -> ComposeResult:
         with Container(id="edit-box"):
@@ -170,6 +171,8 @@ class EditQSOModal(ModalScreen[Optional[dict]]):
                 yield Label("Notes:", classes="edit-label")
                 yield Input(value=self.qso.notes, id="e-notes", classes="edit-input")
             with Horizontal(id="edit-btn-row"):
+                if self.qrz and self.qrz.configured:
+                    yield Button("QRZ ↗", id="e-qrz")
                 yield Button("Save", variant="primary", id="e-save")
                 yield Button("Cancel", id="e-cancel")
 
@@ -197,6 +200,28 @@ class EditQSOModal(ModalScreen[Optional[dict]]):
     @on(Button.Pressed, "#e-cancel")
     def on_cancel(self) -> None:
         self.dismiss(None)
+
+    @on(Button.Pressed, "#e-qrz")
+    def on_qrz(self) -> None:
+        self._do_qrz_lookup()
+
+    @work(exclusive=True, group="edit-qrz-lookup")
+    async def _do_qrz_lookup(self) -> None:
+        btn = self.query_one("#e-qrz", Button)
+        callsign = self.query_one("#e-callsign", Input).value.strip().upper()
+        if not callsign:
+            return
+        btn.disabled = True
+        btn.label = "…"
+        info = await self.qrz.lookup(callsign)
+        if info:
+            self.query_one("#e-name", Input).value = info.name
+            self.query_one("#e-state", Input).value = info.state or ""
+            btn.label = "QRZ ✓"
+        else:
+            self.notify(f"QRZ: {callsign} not found", severity="warning")
+            btn.label = "QRZ ↗"
+        btn.disabled = False
 
     def on_key(self, event) -> None:
         if event.key == "escape":
@@ -534,6 +559,7 @@ class LoggerScreen(Screen):
         Binding("ctrl+5", "vk5", "VK5", show=False),
         Binding("f10", "end_session", "End Session"),
         Binding("ctrl+d", "delete_qso", "Del QSO"),
+        Binding("f9", "qrz_backfill", "QRZ Backfill"),
         Binding("escape", "clear_form", "Clear QSO"),
     ]
 
@@ -1337,7 +1363,7 @@ class LoggerScreen(Screen):
                 except Exception as e:
                     self.notify(f"ADIF rewrite error: {e}", severity="error")
 
-        self.app.push_screen(EditQSOModal(qso), on_result)
+        self.app.push_screen(EditQSOModal(qso, self._qrz), on_result)
 
     def action_edit_last_qso(self) -> None:
         """F4 — toggle between QSO table and entry form."""
@@ -1457,6 +1483,33 @@ class LoggerScreen(Screen):
                     self.notify(f"ADIF rewrite error: {e}", severity="error")
 
         self.app.push_screen(ConfirmModal(f"Delete QSO #{qso_id}?"), on_confirm)
+
+    @work(exclusive=True, group="qrz-backfill")
+    async def action_qrz_backfill(self) -> None:
+        """Ctrl+Q — look up QRZ info for all QSOs with empty name."""
+        if not self._qrz.configured:
+            self.notify("QRZ not configured", severity="warning")
+            return
+        targets = [q for q in self.session.qsos if not q.name]
+        if not targets:
+            self.notify("All contacts already have names")
+            return
+        self.notify(f"QRZ: looking up {len(targets)} contact(s)…")
+        updated = 0
+        for qso in targets:
+            info = await self._qrz.lookup(qso.callsign)
+            if info:
+                self.session.update_qso(qso.qso_id, name=info.name, state=info.state or qso.state)
+                updated += 1
+        self._rebuild_table()
+        self._save_session()
+        try:
+            for park_ref, log_path in zip(self.session.park_refs, self._log_paths):
+                write_adif(self.session, log_path, park_ref)
+        except Exception as e:
+            self.notify(f"ADIF rewrite error: {e}", severity="error")
+            return
+        self.notify(f"QRZ: updated {updated} of {len(targets)} contact(s)")
 
     # ------------------------------------------------------------------
     # Called from SpotsScreen when user QSYs to a spot
