@@ -6,7 +6,7 @@ A terminal user interface (TUI) for logging Parks on the Air (POTA) activations.
 
 > **Vibe coded.** This project was built entirely with AI assistance (Claude Code). It works well for my use case but comes with no guarantees. Use at your own risk, and always verify your log files before uploading to pota.app.
 
-![Potatui logger screen](Screenshot_20260302_180011.png)
+![Potatui logger screen](interface.png)
 
 ---
 
