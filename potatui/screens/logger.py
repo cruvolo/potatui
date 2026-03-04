@@ -1499,7 +1499,8 @@ class LoggerScreen(Screen):
         for qso in targets:
             info = await self._qrz.lookup(qso.callsign)
             if info:
-                self.session.update_qso(qso.qso_id, name=info.name, state=info.state or qso.state)
+                state = qso.state if qso.is_p2p else (info.state or qso.state)
+                self.session.update_qso(qso.qso_id, name=info.name, state=state)
                 updated += 1
         self._rebuild_table()
         self._save_session()
