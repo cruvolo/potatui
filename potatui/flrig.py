@@ -5,6 +5,19 @@ from __future__ import annotations
 import xmlrpc.client
 from typing import Optional
 
+class _TimeoutTransport(xmlrpc.client.Transport):
+    """Transport with a configurable socket timeout (important on Windows)."""
+
+    def __init__(self, timeout: float = 1.0, **kwargs: object) -> None:
+        super().__init__(**kwargs)
+        self._timeout = timeout
+
+    def make_connection(self, host: str) -> xmlrpc.client.http.client.HTTPConnection:  # type: ignore[override]
+        conn = super().make_connection(host)
+        conn.timeout = self._timeout
+        return conn
+
+
 # Map flrig mode strings to our canonical mode names
 MODE_MAP: dict[str, str] = {
     "USB": "SSB",
@@ -31,7 +44,9 @@ class FlrigClient:
 
     def _get_proxy(self) -> xmlrpc.client.ServerProxy:
         if self._proxy is None:
-            self._proxy = xmlrpc.client.ServerProxy(self._url, allow_none=True)
+            self._proxy = xmlrpc.client.ServerProxy(
+                self._url, allow_none=True, transport=_TimeoutTransport(timeout=1.0)
+            )
         return self._proxy
 
     def _reset(self) -> None:
