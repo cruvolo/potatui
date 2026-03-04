@@ -892,8 +892,10 @@ class LoggerScreen(Screen):
 
     @work(exclusive=True, group="flrig-poll")
     async def _poll_flrig(self) -> None:
-        freq = self.flrig.get_frequency()
-        mode = self.flrig.get_mode()
+        import asyncio
+        freq, mode = await asyncio.to_thread(
+            lambda: (self.flrig.get_frequency(), self.flrig.get_mode())
+        )
 
         if freq is not None:
             self._flrig_online = True
