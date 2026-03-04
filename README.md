@@ -44,7 +44,7 @@ A terminal user interface (TUI) for logging Parks on the Air (POTA) activations.
 
 ```bash
 # 1. Clone the repository
-git clone <repo-url> potatui
+git clone https://github.com/MonkeybutlerCJH/potatui.git potatui
 cd potatui
 
 # 2. Create a virtual environment
@@ -75,7 +75,7 @@ potatui
 
 ```powershell
 # 1. Clone the repository
-git clone <repo-url> potatui
+git clone https://github.com/MonkeybutlerCJH/potatui.git potatui
 cd potatui
 
 # 2. Create a virtual environment
