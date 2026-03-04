@@ -13,21 +13,16 @@ A terminal user interface (TUI) for logging Parks on the Air (POTA) activations.
 ## Features
 
 - **Live radio integration** — polls flrig every 2 seconds for frequency and mode. Band is derived automatically from frequency. flrig is required for radio integration; without it, frequency and mode are entered manually.
-- **Quick QSY** — press F2 to set a new run/CQ frequency instantly. Tunes flrig if connected.
-- **Manual frequency entry** — type any frequency directly in the entry form; band updates in the header as you type.
 - **Resume activations** — on launch, pick any previous session to continue from where you left off.
 - **Offline park database** — a local copy of the full POTA parks list is downloaded on first launch and refreshed every 30 days. Park lookups work even without internet.
 - **Live park lookup** — park name and location shown as you type the park ref at setup.
 - **P2P park lookup** — dedicated P2P field does a live lookup, displays the park name, and auto-fills the State field with the state abbreviation.
 - **QRZ callsign lookup** — name, location, distance, and direction from your park shown automatically as you type a callsign. First name and state auto-fill. QRZ backfill runs on session resume to fill in any missing names/states. Requires a QRZ XML subscription.
-- **Duplicate detection** — highlights "DUP" in yellow if a callsign has already been worked on the same band this session. Non-blocking.
 - **POTA spots browser** — live spot list with band/mode/sort filters, auto-refreshes every 60 seconds. QSY directly to a spot with one keypress (tunes flrig, pre-fills callsign and P2P park). Distance from your park shown per spot. Worked activators shown in green.
 - **Self-spotting** — post yourself to the POTA network from within the app.
 - **Voice keyer** — fire rig voice keyer messages via CAT commands. Quick-fire with Ctrl+1–5, or open the full panel with F7.
 - **ADIF export** — every QSO is appended to an ADIF file immediately. Full rewrite on edit, delete, or session end. Ready to upload to pota.app.
 - **Multi-park support** — enter multiple park refs at setup (e.g. `US-1234,US-5678`).
-- **Internet status indicator** — header shows live connectivity status so you always know if the POTA API is reachable.
-- **Persistent theme** — theme changes via the command palette are saved automatically.
 
 ---
 
