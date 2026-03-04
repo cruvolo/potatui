@@ -86,6 +86,7 @@ class SpotsScreen(Screen):
     }
 
     #last-refresh {
+        width: auto;
         color: $text-muted;
     }
 

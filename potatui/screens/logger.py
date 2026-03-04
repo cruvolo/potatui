@@ -588,50 +588,29 @@ class LoggerScreen(Screen):
         width: auto;
     }
 
-    .hdr-valid {
-        color: $success;
-        text-style: bold;
-    }
-
-    .hdr-need {
-        color: $error;
-        text-style: bold;
-    }
 
     .hdr-offline {
         color: $warning;
     }
 
-    #hdr-net {
+    #hdr-net, #hdr-flrig {
         width: auto;
         padding: 0 1;
+        color: $background;
         text-style: bold;
     }
 
-    #hdr-net.net-online {
-        color: $success;
+    #hdr-net.net-online, #hdr-flrig.flrig-online {
+        background: $success;
     }
 
-    #hdr-net.net-offline {
-        color: $error;
+    #hdr-net.net-offline, #hdr-flrig.flrig-offline {
+        background: $error;
     }
 
     #hdr-net.net-unknown {
+        background: $panel;
         color: $text-muted;
-    }
-
-    #hdr-flrig {
-        width: auto;
-        padding: 0 1;
-        text-style: bold;
-    }
-
-    #hdr-flrig.flrig-online {
-        color: $success;
-    }
-
-    #hdr-flrig.flrig-offline {
-        color: $error;
     }
 
     #hdr-spacer {
@@ -793,9 +772,9 @@ class LoggerScreen(Screen):
             yield Static("|", classes="hdr-sep")
             yield Static("", id="hdr-elapsed", classes="hdr-item")
             yield Static("", id="hdr-spacer")
-            yield Static("○ net", id="hdr-net", classes="net-unknown")
+            yield Static("net", id="hdr-net", classes="net-unknown")
             yield Static("|", classes="hdr-sep")
-            yield Static("● flrig: offline", id="hdr-flrig", classes="flrig-offline")
+            yield Static("flrig", id="hdr-flrig", classes="flrig-offline")
 
         # Entry form
         with Horizontal(id="entry-form"):
@@ -890,25 +869,16 @@ class LoggerScreen(Screen):
 
         flrig_widget = self.query_one("#hdr-flrig", Static)
         if self._flrig_online:
-            flrig_widget.update("● flrig: online")
             flrig_widget.add_class("flrig-online")
             flrig_widget.remove_class("flrig-offline")
         else:
-            flrig_widget.update("● flrig: offline")
             flrig_widget.add_class("flrig-offline")
             flrig_widget.remove_class("flrig-online")
 
     def _update_qso_count(self) -> None:
         count = len(self.session.qsos)
         count_widget = self.query_one("#hdr-qso-count", Static)
-        if count >= 10:
-            count_widget.update(f"QSOs: {count}  [✓ VALID]")
-            count_widget.add_class("hdr-valid")
-            count_widget.remove_class("hdr-need")
-        else:
-            count_widget.update(f"QSOs: {count}")
-            count_widget.remove_class("hdr-valid")
-            count_widget.add_class("hdr-need")
+        count_widget.update(f"QSOs: {count}")
 
     def _tick_clock(self) -> None:
         now = datetime.utcnow()
@@ -947,17 +917,15 @@ class LoggerScreen(Screen):
     async def _check_internet_connectivity(self) -> None:
         from potatui.park_db import check_internet
         online = await check_internet(self.config.pota_api_base)
-        widget = self.query_one("#hdr-net", Static)
+        net_widget = self.query_one("#hdr-net", Static)
         if online:
-            widget.update("● net")
-            widget.add_class("net-online")
-            widget.remove_class("net-offline")
-            widget.remove_class("net-unknown")
+            net_widget.add_class("net-online")
+            net_widget.remove_class("net-offline")
+            net_widget.remove_class("net-unknown")
         else:
-            widget.update("○ net")
-            widget.add_class("net-offline")
-            widget.remove_class("net-online")
-            widget.remove_class("net-unknown")
+            net_widget.add_class("net-offline")
+            net_widget.remove_class("net-online")
+            net_widget.remove_class("net-unknown")
 
     def _add_qso_row(self, qso: QSO) -> None:
         table = self.query_one("#qso-table", DataTable)
@@ -1237,7 +1205,7 @@ class LoggerScreen(Screen):
     @on(Input.Changed, "#f-p2p")
     def on_p2p_changed(self, event: Input.Changed) -> None:
         raw = event.value.strip().upper()
-        if not raw:
+        if not raw or raw == "US-":
             self._clear_p2p_info()
             return
         from potatui.pota_api import is_valid_park_ref

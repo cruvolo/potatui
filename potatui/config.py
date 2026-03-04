@@ -118,7 +118,7 @@ api_base = "https://api.pota.app"
 
 # Textual theme name.  Changed automatically when you switch
 # themes with the command palette (Ctrl+backslash).
-theme = "textual-dark"
+theme = "nord"
 """
 
 # ---------------------------------------------------------------------------
@@ -161,7 +161,7 @@ class Config:
     flrig_host:   str = "localhost"
     flrig_port:   int = 12345
     pota_api_base: str = "https://api.pota.app"
-    theme: str = "textual-dark"
+    theme: str = "nord"
     qrz_username: str = ""
     qrz_password: str = ""
     vk1: str = "PB01;"

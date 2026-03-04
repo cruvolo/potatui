@@ -117,12 +117,9 @@ async def fetch_spots(base_url: str) -> list[Spot]:
             for item in raw:
                 try:
                     freq_khz = float(item.get("frequency", 0))
-                    loc_name = item.get("locationName", "")
-                    location = (
-                        item.get("stateAbbrev")
-                        or item.get("state")
-                        or _US_STATE_ABBREV.get(loc_name, loc_name)
-                    )
+                    loc_desc = item.get("locationDesc", "")
+                    first_loc = loc_desc.split(",")[0].strip() if loc_desc else ""
+                    location = first_loc.split("-", 1)[-1] if "-" in first_loc else first_loc
                     spots.append(
                         Spot(
                             activator=item.get("activator", ""),
