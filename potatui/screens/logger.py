@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 
-from textual import on, work
+from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
@@ -21,6 +21,7 @@ from textual.widgets import (
     Select,
     Static,
 )
+from textual.widgets._input import Selection
 
 from potatui.adif import append_qso_adif, freq_to_band, session_file_stem, write_adif
 from potatui.config import Config
@@ -29,20 +30,21 @@ from potatui.session import QSO, Session
 
 MODES = ["SSB", "CW", "FT8", "FT4", "AM", "FM"]
 
-# Pre-fill only the readability digit so the cursor lands on the signal part.
+# Full default RST values. On focus, the signal digits (after the first char)
+# are selected so the user can type to replace just that part.
 # FT8/FT4 use dB values (e.g. -10) so leave blank.
 DEFAULT_RST: dict[str, str] = {
-    "SSB": "5",
-    "AM": "5",
-    "FM": "5",
-    "CW": "5",
+    "SSB": "59",
+    "AM": "59",
+    "FM": "59",
+    "CW": "599",
     "FT8": "",
     "FT4": "",
 }
 
 
 def _rst_default(mode: str) -> str:
-    return DEFAULT_RST.get(mode.upper(), "5")
+    return DEFAULT_RST.get(mode.upper(), "59")
 
 
 # ---------------------------------------------------------------------------
@@ -968,6 +970,15 @@ class LoggerScreen(Screen):
     @on(Button.Pressed, "#btn-log")
     def on_log_button(self) -> None:
         self._log_qso()
+
+    def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        """Select signal digits on RST field focus so typing overwrites just that part."""
+        if event.widget.id not in ("f-rst-sent", "f-rst-rcvd"):
+            return
+        inp = event.widget
+        val = inp.value
+        if len(val) > 1:
+            inp.selection = Selection(1, len(val))
 
     @on(Input.Submitted, "#f-callsign")
     @on(Input.Submitted, "#f-rst-sent")
