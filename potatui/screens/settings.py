@@ -184,7 +184,7 @@ class SettingsScreen(Screen):
                 # ── QRZ ─────────────────────────────────────────────────
                 yield Static("QRZ (Optional)", classes="section-heading")
                 yield Static("─" * 60, classes="section-rule")
-                yield Static("Reserved for future callsign lookup features.", classes="field-hint")
+                yield Static("Enables callsign info strip with name, location, and distance.", classes="field-hint")
 
                 with Horizontal(classes="field-row"):
                     yield Label("Username:", classes="field-label")
@@ -193,6 +193,11 @@ class SettingsScreen(Screen):
                 with Horizontal(classes="field-row"):
                     yield Label("Password:", classes="field-label")
                     yield Input(value=self.config.qrz_password, password=True, id="s-qrz-pass", classes="field-input")
+
+                with Horizontal(classes="field-row"):
+                    yield Label("API URL:", classes="field-label")
+                    yield Input(value=self.config.qrz_api_url, placeholder="https://xmldata.qrz.com/xml/current/", id="s-qrz-url", classes="field-input")
+                yield Static("Leave as default unless using an alternative QRZ endpoint.", classes="field-hint")
 
                 # ── Config path ─────────────────────────────────────────
                 yield Static("─" * 60, classes="section-rule")
@@ -222,6 +227,7 @@ class SettingsScreen(Screen):
         flrig_host = val("s-flrig-host") or "localhost"
         qrz_user = val("s-qrz-user")
         qrz_pass = self.query_one("#s-qrz-pass", Input).value  # preserve as-is
+        qrz_url = val("s-qrz-url") or "https://xmldata.qrz.com/xml/current/"
 
         try:
             power_w = int(val("s-power") or "100")
@@ -247,6 +253,7 @@ class SettingsScreen(Screen):
             flrig_port=flrig_port,
             qrz_username=qrz_user,
             qrz_password=qrz_pass,
+            qrz_api_url=qrz_url,
             vk1=vk[0], vk2=vk[1], vk3=vk[2], vk4=vk[3], vk5=vk[4],
             pota_api_base=self.config.pota_api_base,
         )

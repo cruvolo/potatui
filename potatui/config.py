@@ -44,12 +44,12 @@ distance_unit = "mi"
 
 
 # ── QRZ Lookup ──────────────────────────────────────────────
-# Optional.  Not used in the current version, reserved for
-# future callsign lookup / name auto-fill features.
+# Optional.  Enables callsign info strip and name auto-fill.
 [qrz]
 
 username = ""
 password = ""
+api_url = "https://xmldata.qrz.com/xml/current/"
 
 
 # ── Log Files ───────────────────────────────────────────────
@@ -132,6 +132,7 @@ _SECTION_MAP: dict[tuple[str, str], str] = {
     ("operator", "distance_unit"):  "distance_unit",
     ("qrz",      "username"):  "qrz_username",
     ("qrz",      "password"):  "qrz_password",
+    ("qrz",      "api_url"):   "qrz_api_url",
     ("logs",     "dir"):       "log_dir",
     ("rig",      "name"):      "rig",
     ("rig",      "antenna"):   "antenna",
@@ -164,6 +165,7 @@ class Config:
     theme: str = "nord"
     qrz_username: str = ""
     qrz_password: str = ""
+    qrz_api_url:  str = "https://xmldata.qrz.com/xml/current/"
     vk1: str = "PB01;"
     vk2: str = "PB02;"
     vk3: str = "PB03;"
@@ -210,6 +212,7 @@ distance_unit = {q(cfg.distance_unit)}
 
 username = {q(cfg.qrz_username)}
 password = {q(cfg.qrz_password)}
+api_url = {q(cfg.qrz_api_url)}
 
 
 # ── Log Files ───────────────────────────────────────────────

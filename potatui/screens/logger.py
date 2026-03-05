@@ -273,6 +273,55 @@ class ConfirmModal(ModalScreen[bool]):
 
 
 # ---------------------------------------------------------------------------
+# QRZ connection log modal
+# ---------------------------------------------------------------------------
+
+class QrzLogModal(ModalScreen[None]):
+    CSS = """
+    QrzLogModal { align: center middle; }
+    #qrz-log-box {
+        width: 72;
+        height: 20;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    #qrz-log-title {
+        text-align: center;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    #qrz-log-scroll { height: 1fr; }
+    #qrz-log-empty { color: $text-muted; text-style: italic; }
+    #qrz-log-close { height: auto; align: right middle; margin-top: 1; }
+    """
+
+    def __init__(self, error_log: list[str]) -> None:
+        super().__init__()
+        self._log = error_log
+
+    def compose(self) -> ComposeResult:
+        with Container(id="qrz-log-box"):
+            yield Static("QRZ Connection Log", id="qrz-log-title")
+            with ScrollableContainer(id="qrz-log-scroll"):
+                if self._log:
+                    for entry in self._log:
+                        yield Static(entry)
+                else:
+                    yield Static("No errors logged — QRZ is working fine.", id="qrz-log-empty")
+            with Horizontal(id="qrz-log-close"):
+                yield Button("Close", variant="primary", id="qrz-log-btn-close")
+
+    @on(Button.Pressed, "#qrz-log-btn-close")
+    def on_close(self) -> None:
+        self.dismiss(None)
+
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+
+
+# ---------------------------------------------------------------------------
 # Voice keyer modal
 # ---------------------------------------------------------------------------
 
@@ -595,22 +644,22 @@ class LoggerScreen(Screen):
         color: $warning;
     }
 
-    #hdr-net, #hdr-flrig {
+    #hdr-net, #hdr-flrig, #hdr-qrz {
         width: auto;
         padding: 0 1;
         color: $background;
         text-style: bold;
     }
 
-    #hdr-net.net-online, #hdr-flrig.flrig-online {
+    #hdr-net.net-online, #hdr-flrig.flrig-online, #hdr-qrz.qrz-ok {
         background: $success;
     }
 
-    #hdr-net.net-offline, #hdr-flrig.flrig-offline {
+    #hdr-net.net-offline, #hdr-flrig.flrig-offline, #hdr-qrz.qrz-error {
         background: $error;
     }
 
-    #hdr-net.net-unknown {
+    #hdr-net.net-unknown, #hdr-qrz.qrz-unconfigured {
         background: $panel;
         color: $text-muted;
     }
@@ -742,7 +791,7 @@ class LoggerScreen(Screen):
         self.flrig = FlrigClient(config.flrig_host, config.flrig_port)
         self._flrig_online = False
         from potatui.qrz import QRZClient
-        self._qrz = QRZClient(config.qrz_username, config.qrz_password)
+        self._qrz = QRZClient(config.qrz_username, config.qrz_password, config.qrz_api_url)
         self._park_latlon: tuple[float, float] | None = None
         self._log_paths = self._make_log_paths()
         self._json_path = self._make_json_path()
@@ -777,6 +826,8 @@ class LoggerScreen(Screen):
             yield Static("net", id="hdr-net", classes="net-unknown")
             yield Static("|", classes="hdr-sep")
             yield Static("flrig", id="hdr-flrig", classes="flrig-offline")
+            yield Static("|", classes="hdr-sep")
+            yield Static("qrz", id="hdr-qrz", classes="qrz-unconfigured")
 
         # Entry form
         with Horizontal(id="entry-form"):
@@ -831,6 +882,7 @@ class LoggerScreen(Screen):
         self.set_interval(30.0, self._check_internet_connectivity)
         self._check_internet_connectivity()
         self._fetch_park_location()
+        self._update_qrz_indicator()
         self.query_one("#f-callsign", Input).focus()
 
     @work
@@ -916,6 +968,20 @@ class LoggerScreen(Screen):
             self._flrig_online = False
 
         self._update_radio_display()
+
+    def _update_qrz_indicator(self) -> None:
+        try:
+            widget = self.query_one("#hdr-qrz", Static)
+            widget.set_classes(f"qrz-{self._qrz.status}")
+        except Exception:
+            pass
+
+    @on(events.Click, "#hdr-qrz")
+    def on_qrz_indicator_click(self) -> None:
+        if not self._qrz.configured:
+            self.notify("QRZ not configured — add credentials in Settings (F8)", severity="warning")
+            return
+        self.app.push_screen(QrzLogModal(self._qrz.error_log))
 
     @work(exclusive=True, group="net-check")
     async def _check_internet_connectivity(self) -> None:
@@ -1127,6 +1193,7 @@ class LoggerScreen(Screen):
         if info is None:
             bar.set_classes("notfound")
             bar.update(f"  QRZ: {callsign} — not found")
+            self._update_qrz_indicator()
             return
 
         # Auto-fill name and state fields if empty (state only if P2P not entered)
@@ -1191,6 +1258,7 @@ class LoggerScreen(Screen):
 
         bar.set_classes("")
         bar.update("  ·  ".join(parts))
+        self._update_qrz_indicator()
 
     def _clear_qrz_info(self) -> None:
         bar = self.query_one("#qrz-info-bar", Static)
@@ -1491,6 +1559,7 @@ class LoggerScreen(Screen):
         except Exception as e:
             self.notify(f"ADIF rewrite error: {e}", severity="error")
             return
+        self._update_qrz_indicator()
         self.notify(f"QRZ: updated {updated} of {len(targets)} contact(s)")
 
     # ------------------------------------------------------------------

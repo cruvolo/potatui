@@ -12,6 +12,7 @@ import httpx
 _QRZ_URL = "https://xmldata.qrz.com/xml/current/"
 _AGENT = "Potatui/1.0"
 _QRZ_NS = "http://xmldata.qrz.com"
+_MAX_ERROR_LOG = 50
 
 
 @dataclass
@@ -39,15 +40,43 @@ class QRZInfo:
 class QRZClient:
     """QRZ XML data API client with session-key caching and per-session callsign cache."""
 
-    def __init__(self, username: str, password: str) -> None:
+    def __init__(self, username: str, password: str, api_url: str = _QRZ_URL) -> None:
         self._username = username.strip()
         self._password = password.strip()
+        self._api_url = api_url.strip() or _QRZ_URL
         self._session_key: Optional[str] = None
         self._cache: dict[str, Optional[QRZInfo]] = {}
+        self._error_log: list[str] = []
+        self._last_ok: Optional[bool] = None  # None = not yet tested
 
     @property
     def configured(self) -> bool:
         return bool(self._username and self._password)
+
+    @property
+    def status(self) -> str:
+        """'unconfigured' | 'ok' | 'error' — reflects last API interaction."""
+        if not self.configured:
+            return "unconfigured"
+        if self._last_ok is None:
+            return "unconfigured"  # configured but not yet tested
+        return "ok" if self._last_ok else "error"
+
+    @property
+    def error_log(self) -> list[str]:
+        """Recent error messages, newest first."""
+        return list(reversed(self._error_log))
+
+    def _mark_ok(self) -> None:
+        self._last_ok = True
+
+    def _log_error(self, msg: str) -> None:
+        import datetime
+        ts = datetime.datetime.utcnow().strftime("%H:%Mz")
+        self._error_log.append(f"{ts}  {msg}")
+        if len(self._error_log) > _MAX_ERROR_LOG:
+            self._error_log.pop(0)
+        self._last_ok = False
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -80,7 +109,7 @@ class QRZClient:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 r = await client.get(
-                    _QRZ_URL,
+                    self._api_url,
                     params={
                         "username": self._username,
                         "password": self._password,
@@ -91,9 +120,19 @@ class QRZClient:
             key = self._parse_session_key(root)
             if key:
                 self._session_key = key
+                self._mark_ok()
                 return True
+            # Extract error message for logging
+            session = self._find(root, "Session")
+            err_text = ""
+            if session is not None:
+                err_el = self._find(session, "Error")
+                if err_el is not None and err_el.text:
+                    err_text = err_el.text.strip()
+            self._log_error(f"Login failed: {err_text or 'no session key returned'}")
             return False
-        except Exception:
+        except Exception as exc:
+            self._log_error(f"Login error: {exc}")
             return False
 
     # ------------------------------------------------------------------
@@ -129,7 +168,7 @@ class QRZClient:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 r = await client.get(
-                    _QRZ_URL,
+                    self._api_url,
                     params={"s": self._session_key, "callsign": callsign},
                 )
             root = ET.fromstring(r.text)
@@ -141,6 +180,17 @@ class QRZClient:
 
             call_el = self._find(root, "Callsign")
             if call_el is None:
+                # Distinguish "not found" (valid response) from session errors
+                session = self._find(root, "Session")
+                if session is not None:
+                    err_el = self._find(session, "Error")
+                    if err_el is not None and err_el.text:
+                        err_text = err_el.text.strip()
+                        if "not found" in err_text.lower():
+                            self._mark_ok()  # Callsign not in QRZ — still a valid API response
+                        # else: session/auth error — caller handles retry; don't change status
+                        return None
+                self._mark_ok()  # Valid response with no callsign and no error
                 return None
 
             def t(tag: str) -> str:
@@ -155,6 +205,7 @@ class QRZClient:
             lat = float(lat_s) if lat_s else None
             lon = float(lon_s) if lon_s else None
 
+            self._mark_ok()
             return QRZInfo(
                 callsign=callsign,
                 fname=fname,
@@ -166,7 +217,8 @@ class QRZClient:
                 lat=lat,
                 lon=lon,
             )
-        except Exception:
+        except Exception as exc:
+            self._log_error(f"Lookup {callsign}: {exc}")
             return None
 
 
