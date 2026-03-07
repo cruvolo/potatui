@@ -15,6 +15,7 @@ from textual.widgets import (
     Checkbox,
     DataTable,
     Footer,
+    Input,
     Label,
     Select,
     Static,
@@ -57,6 +58,7 @@ def _spot_age_minutes(spot_time_str: str) -> int:
 
 class SpotsScreen(Screen):
     BINDINGS = [
+        Binding("ctrl+f", "toggle_search", "Search"),
         Binding("r", "refresh", "Refresh"),
         Binding("escape", "go_back", "Back"),
         Binding("f5", "go_back", "Back"),
@@ -68,6 +70,7 @@ class SpotsScreen(Screen):
     _saved_sort: str = "distance"
     _saved_qrt: bool = True
     _saved_qsy: bool = True
+    _saved_search: str = ""
 
     CSS = """
     SpotsScreen {
@@ -139,6 +142,28 @@ class SpotsScreen(Screen):
         width: 17;
     }
 
+    #search-bar {
+        height: auto;
+        padding: 0 1;
+        background: $surface-darken-1;
+        border-bottom: solid $primary-darken-2;
+        display: none;
+    }
+
+    #search-bar.visible {
+        display: block;
+    }
+
+    .search-label {
+        padding-top: 1;
+        width: 8;
+        color: $text-muted;
+    }
+
+    #search-input {
+        width: 1fr;
+    }
+
     #error-msg {
         color: $error;
         padding: 1;
@@ -182,6 +207,14 @@ class SpotsScreen(Screen):
             yield Checkbox("QRT", value=SpotsScreen._saved_qrt, id="qrt-filter")
             yield Checkbox("QSY", value=SpotsScreen._saved_qsy, id="qsy-filter")
 
+        with Horizontal(id="search-bar"):
+            yield Label("Search:", classes="search-label")
+            yield Input(
+                value=SpotsScreen._saved_search,
+                placeholder="callsign, park ref, park name, freq…",
+                id="search-input",
+            )
+
         yield Static("", id="error-msg")
         yield DataTable(id="spots-table", cursor_type="row")
         yield Footer()
@@ -192,13 +225,35 @@ class SpotsScreen(Screen):
             "Activator", "Park", "Park Name", "Freq", "Band",
             "Mode", "State", "Dist", "Age", "Comments"
         )
+        if SpotsScreen._saved_search:
+            self.query_one("#search-bar").add_class("visible")
         self._do_refresh()
         self.set_interval(60.0, self._do_refresh)
 
     def action_refresh(self) -> None:
         self._do_refresh()
 
+    def action_toggle_search(self) -> None:
+        bar = self.query_one("#search-bar")
+        if "visible" in bar.classes:
+            self._close_search()
+        else:
+            bar.add_class("visible")
+            self.query_one("#search-input", Input).focus()
+
+    def _close_search(self) -> None:
+        bar = self.query_one("#search-bar")
+        bar.remove_class("visible")
+        inp = self.query_one("#search-input", Input)
+        inp.value = ""
+        SpotsScreen._saved_search = ""
+        self._apply_filters()
+
     def action_go_back(self) -> None:
+        bar = self.query_one("#search-bar")
+        if "visible" in bar.classes:
+            self._close_search()
+            return
         self.app.pop_screen()
 
     @work(exclusive=True)
@@ -289,6 +344,16 @@ class SpotsScreen(Screen):
         if qrt_filt:
             filtered = [s for s in filtered if "QRT".casefold() not in s.comments.casefold()]
 
+        search = SpotsScreen._saved_search.strip().casefold()
+        if search:
+            filtered = [
+                s for s in filtered
+                if search in s.activator.casefold()
+                or search in s.reference.casefold()
+                or search in (s.park_name or "").casefold()
+                or search in f"{s.frequency:.1f}"
+            ]
+
         # Sort
         if sort_by == "distance":
             # Spots with known distance first (ascending), then unknowns
@@ -343,6 +408,11 @@ class SpotsScreen(Screen):
     @on(Checkbox.Changed, "#qrt-filter")
     @on(Checkbox.Changed, "#qsy-filter")
     def on_filter_changed(self) -> None:
+        self._apply_filters()
+
+    @on(Input.Changed, "#search-input")
+    def on_search_changed(self, event: Input.Changed) -> None:
+        SpotsScreen._saved_search = event.value
         self._apply_filters()
 
     @on(DataTable.RowSelected)
