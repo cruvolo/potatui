@@ -61,6 +61,7 @@ def _qso_to_adif(qso: QSO, operator: str, station_callsign: str, park_ref: str, 
         _field("STATION_CALLSIGN", station_callsign),
         _field("MY_SIG", "POTA"),
         _field("MY_SIG_INFO", park_ref.upper()),
+        _field("MY_POTA_REF", park_ref.upper()),
     ]
 
     if my_state:
@@ -76,6 +77,7 @@ def _qso_to_adif(qso: QSO, operator: str, station_callsign: str, park_ref: str, 
     if qso.is_p2p and qso.p2p_ref:
         parts.append(_field("SIG", "POTA"))
         parts.append(_field("SIG_INFO", qso.p2p_ref))
+        parts.append(_field("POTA_REF", qso.p2p_ref))
 
     return " ".join(parts) + " <EOR>\n"
 
@@ -94,7 +96,9 @@ def _mode_to_adif(mode: str) -> tuple[str, str]:
 
 
 def _adif_header() -> str:
+    adif_ver = "3.1.4"
     return (
+        f"<ADIF_VER:{len(adif_ver)}>{adif_ver} "
         f"<PROGRAMID:{len('Potatui')}>Potatui "
         f"<PROGRAMVERSION:{len(__version__)}>{__version__} "
         "<EOH>\n"
