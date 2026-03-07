@@ -112,7 +112,8 @@ def write_adif(session: Session, path: Path, park_ref: Optional[str] = None) -> 
     with open(path, "w", encoding="utf-8") as f:
         f.write(_adif_header())
         for qso in session.qsos:
-            f.write(_qso_to_adif(qso, session.operator, effective_ref, session.my_state))
+            op = qso.operator or session.operator
+            f.write(_qso_to_adif(qso, op, effective_ref, session.my_state))
 
 
 def append_qso_adif(qso: QSO, operator: str, park_ref: str, path: Path, my_state: str = "") -> None:

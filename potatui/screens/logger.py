@@ -590,6 +590,72 @@ class SetFreqModal(ModalScreen):
         self.dismiss(None)
 
 
+class ChangeOperatorModal(ModalScreen):
+    """Quick dialog to change the active operator callsign."""
+
+    CSS = """
+    ChangeOperatorModal {
+        align: center middle;
+    }
+    #chgop-dialog {
+        width: 44;
+        height: auto;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    #chgop-title {
+        text-align: center;
+        text-style: bold;
+        color: $primary;
+        margin-bottom: 1;
+    }
+    #chgop-row {
+        height: auto;
+        margin-bottom: 1;
+    }
+    #chgop-btns {
+        height: auto;
+        align: right middle;
+        margin-top: 1;
+    }
+    #chgop-cancel { margin-right: 1; }
+    """
+
+    def __init__(self, current_operator: str) -> None:
+        super().__init__()
+        self._current = current_operator
+
+    def compose(self) -> ComposeResult:
+        with Container(id="chgop-dialog"):
+            yield Static("Change Operator", id="chgop-title")
+            with Horizontal(id="chgop-row"):
+                yield Input(
+                    value=self._current,
+                    placeholder="W1AW",
+                    id="chgop-input",
+                    select_on_focus=True,
+                )
+            with Horizontal(id="chgop-btns"):
+                yield Button("Cancel", id="chgop-cancel")
+                yield Button("Set", variant="primary", id="chgop-ok")
+
+    def on_mount(self) -> None:
+        self.query_one("#chgop-input", Input).focus()
+
+    @on(Input.Submitted, "#chgop-input")
+    @on(Button.Pressed, "#chgop-ok")
+    def on_confirm(self) -> None:
+        raw = self.query_one("#chgop-input", Input).value.strip().upper()
+        if not raw:
+            return
+        self.dismiss(raw)
+
+    @on(Button.Pressed, "#chgop-cancel")
+    def on_cancel(self) -> None:
+        self.dismiss(None)
+
+
 # ---------------------------------------------------------------------------
 # Main Logger Screen
 # ---------------------------------------------------------------------------
@@ -612,6 +678,7 @@ class LoggerScreen(Screen):
         Binding("ctrl+d", "delete_qso", "Del QSO"),
         Binding("f9", "qrz_backfill", "QRZ Backfill"),
         Binding("escape", "clear_form", "Clear QSO"),
+        Binding("ctrl+o", "change_operator", "Op"),
     ]
 
     CSS = """
@@ -690,9 +757,7 @@ class LoggerScreen(Screen):
     #dup-warning {
         color: $warning;
         text-style: bold;
-        width: 5;
-        padding-top: 1;
-        height: auto;
+        height: 1;
     }
 
     #freq-field {
@@ -864,7 +929,7 @@ class LoggerScreen(Screen):
             with Vertical(classes="form-field"):
                 yield Label("Callsign", classes="form-label")
                 yield Input(placeholder="W1AW", id="f-callsign")
-            yield Static("", id="dup-warning")
+                yield Static("", id="dup-warning")
             with Vertical(classes="form-field", id="rst-sent-field"):
                 yield Label("RST Snt", classes="form-label")
                 yield Input(value=_rst_default(self.mode), id="f-rst-sent", max_length=3, select_on_focus=False)
@@ -1182,6 +1247,7 @@ class LoggerScreen(Screen):
                     notes=notes,
                     is_p2p=True,
                     p2p_ref=ref,
+                    operator=self.session.operator,
                 ))
         else:
             new_qsos.append(self.session.add_qso(
@@ -1196,6 +1262,7 @@ class LoggerScreen(Screen):
                 notes=notes,
                 is_p2p=False,
                 p2p_ref="",
+                operator=self.session.operator,
             ))
 
         # Rebuild table so newest QSO(s) appear at top
@@ -1460,6 +1527,18 @@ class LoggerScreen(Screen):
             self.query_one("#f-callsign", Input).focus()
 
         self.app.push_screen(SetFreqModal(self.freq_khz), on_result)
+
+    def action_change_operator(self) -> None:
+        def on_result(callsign: str | None) -> None:
+            if not callsign:
+                return
+            self.session.operator = callsign
+            self._update_header()
+            self._save_session()
+            self.notify(f"Operator: {callsign}")
+            self.query_one("#f-callsign", Input).focus()
+
+        self.app.push_screen(ChangeOperatorModal(self.session.operator), on_result)
 
     def action_mode_picker(self) -> None:
         def on_result(mode: Optional[str]) -> None:

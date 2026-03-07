@@ -23,6 +23,7 @@ class QSO:
     notes: str = ""
     is_p2p: bool = False
     p2p_ref: str = ""
+    operator: str = ""
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -34,6 +35,7 @@ class QSO:
         d = dict(d)
         d["timestamp_utc"] = datetime.fromisoformat(d["timestamp_utc"])
         d.setdefault("state", "")
+        d.setdefault("operator", "")
         return cls(**d)
 
 
@@ -70,6 +72,7 @@ class Session:
         notes: str = "",
         is_p2p: bool = False,
         p2p_ref: str = "",
+        operator: str = "",
     ) -> QSO:
         qso = QSO(
             qso_id=self._next_id,
@@ -85,6 +88,7 @@ class Session:
             notes=notes,
             is_p2p=is_p2p,
             p2p_ref=p2p_ref,
+            operator=operator,
         )
         self._next_id += 1
         self.qsos.append(qso)
