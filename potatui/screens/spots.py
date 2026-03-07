@@ -57,7 +57,7 @@ def _spot_age_minutes(spot_time_str: str) -> int:
 class SpotsScreen(Screen):
     BINDINGS = [
         Binding("r", "refresh", "Refresh"),
-        Binding("q", "go_back", "Back"),
+        Binding("escape", "go_back", "Back"),
         Binding("f5", "go_back", "Back"),
     ]
 
@@ -77,6 +77,11 @@ class SpotsScreen(Screen):
         padding: 0 1;
         layout: horizontal;
         align: left middle;
+    }
+
+    #spots-header:dark {
+        background: $primary-darken-3;
+        tint: $background 40%;
     }
 
     #spots-title {

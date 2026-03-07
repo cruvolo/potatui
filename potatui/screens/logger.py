@@ -702,6 +702,11 @@ class LoggerScreen(Screen):
         align: left middle;
     }
 
+    #header-bar:dark {
+        background: $primary-darken-3;
+        tint: $background 40%;
+    }
+
     .hdr-item {
         padding: 0 1;
         color: $text;
