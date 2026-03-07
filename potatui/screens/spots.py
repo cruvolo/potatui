@@ -31,7 +31,7 @@ BAND_FILTER_OPTIONS = [("All", "All"), ("160m", "160m"), ("80m", "80m"),
                        ("12m", "12m"), ("10m", "10m"), ("6m", "6m"), ("2m", "2m")]
 MODE_FILTER_OPTIONS = [("All", "All"), ("SSB", "SSB"), ("CW", "CW"),
                        ("FT8", "FT8"), ("FT4", "FT4"), ("FM", "FM"), ("AM", "AM")]
-SORT_OPTIONS = [("Distance", "distance"), ("Age", "age")]
+SORT_OPTIONS = [("Distance", "distance"), ("Age", "age"), ("Frequency", "freq")]
 
 
 def _spot_age_minutes(spot_time_str: str) -> int:
@@ -116,17 +116,17 @@ class SpotsScreen(Screen):
     }
 
     #band-filter {
-        width: 12;
+        width: 14;
         margin-right: 2;
     }
 
     #mode-filter {
-        width: 12;
+        width: 14;
         margin-right: 2;
     }
 
     #sort-select {
-        width: 14;
+        width: 17;
     }
 
     #error-msg {
@@ -275,8 +275,13 @@ class SpotsScreen(Screen):
                 km = self._dist_km(s)
                 return (1, 0.0) if km is None else (0, km)
             filtered = sorted(filtered, key=dist_key)
-        else:  # age — newest first
+        elif sort_by == "age":
             filtered = sorted(filtered, key=lambda s: _spot_age_minutes(s.spot_time))
+        elif sort_by == "freq":
+            filtered = sorted(filtered, key=lambda s: s.frequency)
+        else:
+            self.notify(f"Error: unexpected sort: {sort_by}", severity="error")
+
 
         self._filtered = filtered
         self._rebuild_table()
