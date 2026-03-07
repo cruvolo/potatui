@@ -54,6 +54,13 @@ class ParkDb:
                     state = locations[0] if locations else ""
                     # CSV has a single "grid" column (6-char Maidenhead)
                     grid = (row.get("grid") or "").strip()
+                    lat_s = (row.get("latitude") or "").strip()
+                    lon_s = (row.get("longitude") or "").strip()
+                    try:
+                        park_lat = float(lat_s) if lat_s else None
+                        park_lon = float(lon_s) if lon_s else None
+                    except (ValueError, TypeError):
+                        park_lat, park_lon = None, None
                     parks[ref] = ParkInfo(
                         reference=ref,
                         name=(row.get("name") or "Unknown Park").strip(),
@@ -61,6 +68,8 @@ class ParkDb:
                         state=state,
                         grid=grid,
                         locations=locations,
+                        lat=park_lat,
+                        lon=park_lon,
                     )
         except Exception:
             return

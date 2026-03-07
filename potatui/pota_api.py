@@ -19,6 +19,8 @@ class ParkInfo:
     state: str = ""                          # primary 2-letter abbreviation
     grid: str = ""
     locations: list[str] = field(default_factory=list)  # all abbrevs (multi-state parks)
+    lat: Optional[float] = None
+    lon: Optional[float] = None
 
 
 # US state name → 2-letter abbreviation
@@ -92,6 +94,13 @@ async def lookup_park(ref: str, base_url: str) -> Optional[ParkInfo]:
                     or data.get("state", "")
                     or _US_STATE_ABBREV.get(location, "")
                 )
+                lat_s = data.get("latitude", data.get("lat", ""))
+                lon_s = data.get("longitude", data.get("lon", ""))
+                try:
+                    park_lat: Optional[float] = float(lat_s) if lat_s else None
+                    park_lon: Optional[float] = float(lon_s) if lon_s else None
+                except (ValueError, TypeError):
+                    park_lat, park_lon = None, None
                 return ParkInfo(
                     reference=data.get("reference", ref).upper(),
                     name=data.get("name", "Unknown Park"),
@@ -99,6 +108,8 @@ async def lookup_park(ref: str, base_url: str) -> Optional[ParkInfo]:
                     state=state.strip(),
                     grid=data.get("grid6", data.get("grid4", "")),
                     locations=locations,
+                    lat=park_lat,
+                    lon=park_lon,
                 )
     except Exception:
         pass

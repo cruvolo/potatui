@@ -1017,11 +1017,14 @@ class LoggerScreen(Screen):
         from potatui.pota_api import lookup_park
         from potatui.qrz import grid_to_latlon
         info = await lookup_park(self.session.active_park_ref, self.config.pota_api_base)
-        if info and info.grid:
-            try:
-                self._park_latlon = grid_to_latlon(info.grid)
-            except Exception:
-                pass
+        if info:
+            if info.lat is not None and info.lon is not None:
+                self._park_latlon = (info.lat, info.lon)
+            elif info.grid:
+                try:
+                    self._park_latlon = grid_to_latlon(info.grid)
+                except Exception:
+                    pass
 
     def _setup_table(self) -> None:
         table = self.query_one("#qso-table", DataTable)
