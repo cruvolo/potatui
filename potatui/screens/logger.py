@@ -1205,7 +1205,8 @@ class LoggerScreen(Screen):
     def on_field_submitted(self) -> None:
         self._log_qso()
 
-    def _log_qso(self) -> None:
+    @work(group="log-qso")
+    async def _log_qso(self) -> None:
         raw_cs = self.query_one("#f-callsign", Input).value.strip().upper()
         callsigns = [cs.strip() for cs in raw_cs.split(",") if cs.strip()]
         if not callsigns:
@@ -1214,8 +1215,8 @@ class LoggerScreen(Screen):
 
         rst_sent = self.query_one("#f-rst-sent", Input).value.strip() or _rst_default(self.mode)
         rst_rcvd = self.query_one("#f-rst-rcvd", Input).value.strip() or _rst_default(self.mode)
-        name = self.query_one("#f-name", Input).value.strip()
-        state = self.query_one("#f-state", Input).value.strip()
+        form_name = self.query_one("#f-name", Input).value.strip()
+        form_state = self.query_one("#f-state", Input).value.strip()
         notes = self.query_one("#f-notes", Input).value.strip()
 
         # Freq: read from input field so manual edits are always used
@@ -1233,9 +1234,21 @@ class LoggerScreen(Screen):
         raw_p2p = self.query_one("#f-p2p", Input).value.strip().upper()
         p2p_refs = [r.strip() for r in raw_p2p.split(",") if is_valid_park_ref(r.strip())]
 
+        multi = len(callsigns) > 1
+
+        async def _resolve_name_state(callsign: str) -> tuple[str, str]:
+            """Return (name, state) for a callsign, doing a QRZ lookup in multi mode."""
+            if not multi or not self._qrz.configured:
+                return form_name, form_state
+            info = await self._qrz.lookup(callsign)
+            name = form_name or (info.name if info else "") or ""
+            state = form_state or (info.state if info else "") or ""
+            return name, state
+
         new_qsos: list[QSO] = []
         if p2p_refs:
             for callsign in callsigns:
+                name, state = await _resolve_name_state(callsign)
                 for ref in p2p_refs:
                     new_qsos.append(self.session.add_qso(
                         callsign=callsign,
@@ -1253,6 +1266,7 @@ class LoggerScreen(Screen):
                     ))
         else:
             for callsign in callsigns:
+                name, state = await _resolve_name_state(callsign)
                 new_qsos.append(self.session.add_qso(
                     callsign=callsign,
                     rst_sent=rst_sent,
