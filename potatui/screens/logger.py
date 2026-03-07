@@ -1026,10 +1026,10 @@ class LoggerScreen(Screen):
         self.query_one("#hdr-park", Static).update(park_display)
         call_sta = self.session.station_callsign
         call_op  = self.session.operator
-        if (call_op and call_op == call_sta):
+        if not call_op or call_op == call_sta:
             sta_display = call_sta
         else:
-            sta_display = "%s (%s)" % (call_sta, call_op)
+            sta_display = f"{call_sta} ({call_op})"
         self.query_one("#hdr-sta", Static).update(sta_display)
         self._update_radio_display()
         self._update_qso_count()
