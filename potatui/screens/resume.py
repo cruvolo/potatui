@@ -291,7 +291,7 @@ class ResumeScreen(Screen):
             mode = last.mode
 
         self.notify(
-            f"Resumed {session.operator} @ {session.active_park_ref} — {len(session.qsos)} QSOs",
+            f"Resumed {session.station_callsign} @ {session.active_park_ref} — {len(session.qsos)} QSOs",
             severity="information",
         )
         self.app.push_screen(
