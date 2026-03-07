@@ -66,6 +66,8 @@ class SpotsScreen(Screen):
     _saved_band: str = "All"
     _saved_mode: str = "All"
     _saved_sort: str = "distance"
+    _saved_qrt: bool = True
+    _saved_qsy: bool = True
 
     CSS = """
     SpotsScreen {
@@ -177,8 +179,8 @@ class SpotsScreen(Screen):
             yield Label("Sort:", classes="sort-label")
             yield Select(SORT_OPTIONS, value=SpotsScreen._saved_sort, id="sort-select")
             yield Label("Filter out:", classes="filter-out-label")
-            yield Checkbox("QRT", value=True, id="qrt-filter")
-            yield Checkbox("QSY", value=True, id="qsy-filter")
+            yield Checkbox("QRT", value=SpotsScreen._saved_qrt, id="qrt-filter")
+            yield Checkbox("QSY", value=SpotsScreen._saved_qsy, id="qsy-filter")
 
         yield Static("", id="error-msg")
         yield DataTable(id="spots-table", cursor_type="row")
@@ -274,6 +276,8 @@ class SpotsScreen(Screen):
         SpotsScreen._saved_band = band_filter
         SpotsScreen._saved_mode = mode_filter
         SpotsScreen._saved_sort = sort_by
+        SpotsScreen._saved_qrt = qrt_filt
+        SpotsScreen._saved_qsy = qsy_filt
 
         filtered = self._spots
         if band_filter != "All":
