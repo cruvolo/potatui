@@ -18,6 +18,8 @@ from textual.widgets import (
     Footer,
     Input,
     Label,
+    ListItem,
+    ListView,
     Select,
     Static,
 )
@@ -57,16 +59,23 @@ class ModePickerModal(ModalScreen[Optional[str]]):
         align: center middle;
     }
     #picker-box {
-        width: 30;
+        width: 16;
         height: auto;
         border: solid $primary;
         background: $surface;
-        padding: 1 2;
+        padding: 0 1;
     }
-    #picker-title {
-        text-align: center;
-        text-style: bold;
-        margin-bottom: 1;
+    #mode-list {
+        width: 14;
+        height: auto;
+        background: $surface;
+    }
+    #mode-list > ListItem {
+        padding: 0 2;
+    }
+    #mode-list > ListItem.--highlight {
+        background: $primary;
+        color: $text;
     }
     """
 
@@ -76,24 +85,23 @@ class ModePickerModal(ModalScreen[Optional[str]]):
 
     def compose(self) -> ComposeResult:
         with Container(id="picker-box"):
-            yield Static("Select Mode", id="picker-title")
-            yield Select(
-                [(m, m) for m in MODES],
-                value=self.current,
-                id="mode-select",
-            )
-            with Horizontal():
-                yield Button("OK", variant="primary", id="ok")
-                yield Button("Cancel", id="cancel")
+            items = [ListItem(Static(m), id=f"mode-{m}") for m in MODES]
+            yield ListView(*items, id="mode-list")
 
-    @on(Button.Pressed, "#ok")
-    def on_ok(self) -> None:
-        sel = self.query_one("#mode-select", Select)
-        self.dismiss(str(sel.value) if sel.value != Select.BLANK else None)
+    def on_mount(self) -> None:
+        lv = self.query_one("#mode-list", ListView)
+        try:
+            idx = MODES.index(self.current)
+            lv.index = idx
+        except ValueError:
+            pass
+        lv.focus()
 
-    @on(Button.Pressed, "#cancel")
-    def on_cancel(self) -> None:
-        self.dismiss(None)
+    @on(ListView.Selected, "#mode-list")
+    def on_mode_selected(self, event: ListView.Selected) -> None:
+        item_id = event.item.id or ""
+        mode = item_id.removeprefix("mode-")
+        self.dismiss(mode if mode in MODES else None)
 
     def on_key(self, event) -> None:
         if event.key == "escape":
