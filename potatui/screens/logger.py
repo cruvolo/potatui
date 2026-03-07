@@ -912,6 +912,8 @@ class LoggerScreen(Screen):
         self._qrz = QRZClient(config.qrz_username, config.qrz_password, config.qrz_api_url)
         self._park_latlon: tuple[float, float] | None = None
         self._last_spot_data: tuple[datetime, str, str] | None = None  # (utc_time, spotter, comments)
+        self._qrz_filled_name: bool = False   # True if #f-name was auto-filled by QRZ
+        self._qrz_filled_state: bool = False  # True if #f-state was auto-filled by QRZ
         self._log_paths = self._make_log_paths()
         self._json_path = self._make_json_path()
 
@@ -1344,6 +1346,8 @@ class LoggerScreen(Screen):
         self.query_one("#f-notes", Input).value = ""
         self.query_one("#f-p2p", Input).value = "US-"
         self.query_one("#dup-warning", Static).update("")
+        self._qrz_filled_name = False
+        self._qrz_filled_state = False
         self._clear_p2p_info()
         self._clear_qrz_info()
         self.query_one("#f-callsign", Input).focus()
@@ -1376,6 +1380,8 @@ class LoggerScreen(Screen):
             if not callsign:
                 self.query_one("#f-name", Input).value = ""
                 self.query_one("#f-state", Input).value = ""
+                self._qrz_filled_name = False
+                self._qrz_filled_state = False
 
     @staticmethod
     def _looks_like_callsign(cs: str) -> bool:
@@ -1435,16 +1441,19 @@ class LoggerScreen(Screen):
             self._update_qrz_indicator()
             return
 
-        # Auto-fill name and state fields if empty (state only if P2P not entered)
+        # Auto-fill name and state fields if empty or previously auto-filled by QRZ
+        # (state only if P2P not entered)
         if info.name:
             name_inp = self.query_one("#f-name", Input)
-            if not name_inp.value.strip():
+            if not name_inp.value.strip() or self._qrz_filled_name:
                 name_inp.value = info.name
+                self._qrz_filled_name = True
 
         p2p_val = self.query_one("#f-p2p", Input).value.strip().upper()
         state_inp = self.query_one("#f-state", Input)
-        if not state_inp.value.strip() and p2p_val in ("", "US-") and info.state:
+        if (not state_inp.value.strip() or self._qrz_filled_state) and p2p_val in ("", "US-") and info.state:
             state_inp.value = info.state
+            self._qrz_filled_state = True
 
         parts = [f"  {info.callsign}"]
         if info.name:
