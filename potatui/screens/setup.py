@@ -293,6 +293,7 @@ class SetupScreen(Screen):
 
         session = Session(
             operator=callsign,
+            station_callsign=callsign,
             park_refs=refs,
             active_park_ref=refs[0],
             grid=self.config.grid,

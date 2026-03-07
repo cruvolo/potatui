@@ -1272,7 +1272,7 @@ class LoggerScreen(Screen):
         for park_ref, log_path in zip(self.session.park_refs, self._log_paths):
             for qso in new_qsos:
                 try:
-                    append_qso_adif(qso, self.session.operator, park_ref, log_path, self.session.my_state)
+                    append_qso_adif(qso, self.session.operator, self.session.station_callsign, park_ref, log_path, self.session.my_state)
                 except Exception as e:
                     self.notify(f"ADIF write error: {e}", severity="error")
         self._save_session()

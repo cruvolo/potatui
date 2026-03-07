@@ -39,7 +39,7 @@ def _field(tag: str, value: str) -> str:
     return f"<{tag}:{len(value)}>{value}"
 
 
-def _qso_to_adif(qso: QSO, operator: str, park_ref: str, my_state: str = "") -> str:
+def _qso_to_adif(qso: QSO, operator: str, station_callsign: str, park_ref: str, my_state: str = "") -> str:
     """Convert a QSO to an ADIF record string."""
     date_str = qso.timestamp_utc.strftime("%Y%m%d")
     time_str = qso.timestamp_utc.strftime("%H%M%S")
@@ -58,7 +58,7 @@ def _qso_to_adif(qso: QSO, operator: str, park_ref: str, my_state: str = "") -> 
         _field("RST_SENT", qso.rst_sent),
         _field("RST_RCVD", qso.rst_rcvd),
         _field("OPERATOR", operator),
-        _field("STATION_CALLSIGN", operator),
+        _field("STATION_CALLSIGN", station_callsign),
         _field("MY_SIG", "POTA"),
         _field("MY_SIG_INFO", park_ref.upper()),
     ]
@@ -113,22 +113,22 @@ def write_adif(session: Session, path: Path, park_ref: Optional[str] = None) -> 
         f.write(_adif_header())
         for qso in session.qsos:
             op = qso.operator or session.operator
-            f.write(_qso_to_adif(qso, op, effective_ref, session.my_state))
+            f.write(_qso_to_adif(qso, op, session.station_callsign, effective_ref, session.my_state))
 
 
-def append_qso_adif(qso: QSO, operator: str, park_ref: str, path: Path, my_state: str = "") -> None:
+def append_qso_adif(qso: QSO, operator: str, station_callsign: str, park_ref: str, path: Path, my_state: str = "") -> None:
     """Append a single QSO to an ADIF file, writing header if new."""
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
         with open(path, "w", encoding="utf-8") as f:
             f.write(_adif_header())
     with open(path, "a", encoding="utf-8") as f:
-        f.write(_qso_to_adif(qso, operator, park_ref, my_state))
+        f.write(_qso_to_adif(qso, operator, station_callsign, park_ref, my_state))
 
 
 def session_file_stem(session: Session, park_ref: Optional[str] = None) -> str:
     """Return the base filename stem for session files."""
     date = session.start_time.strftime("%Y%m%d")
-    call = session.operator.upper().replace("/", "-")
+    call = session.station_callsign.upper().replace("/", "-")
     park = (park_ref or session.active_park_ref).upper().replace("/", "-")
     return f"{date}-{call}-{park}"

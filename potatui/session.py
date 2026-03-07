@@ -42,6 +42,7 @@ class QSO:
 @dataclass
 class Session:
     operator: str
+    station_callsign: str
     park_refs: list[str]
     active_park_ref: str
     grid: str
@@ -116,6 +117,7 @@ class Session:
     def to_dict(self) -> dict:
         return {
             "operator": self.operator,
+            "station_callsign": self.station_callsign,
             "park_refs": self.park_refs,
             "active_park_ref": self.active_park_ref,
             "grid": self.grid,
@@ -137,6 +139,7 @@ class Session:
         d["start_time"] = datetime.fromisoformat(d["start_time"])
         d["qsos"] = [QSO.from_dict(q) for q in d.get("qsos", [])]
         d.setdefault("my_state", "")
+        d.setdefault("station_callsign", d["operator"])
         return cls(**d)
 
     @classmethod
