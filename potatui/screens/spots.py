@@ -313,7 +313,7 @@ class SpotsScreen(Screen):
             return
 
         ok_freq = self.flrig.set_frequency(freq_khz * 1000)
-        ok_mode = self.flrig.set_mode(mode)
+        ok_mode = self.flrig.set_mode(mode, freq_khz)
         if not ok_freq or not ok_mode:
             self.notify("flrig not connected — radio not tuned", severity="warning")
         self.app.pop_screen()

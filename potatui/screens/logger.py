@@ -677,11 +677,7 @@ class LoggerScreen(Screen):
         Binding("f6", "self_spot", "Self-Spot"),
         Binding("f7", "voice_keyer", "VK Panel"),
         Binding("f8", "settings", "Settings"),
-        Binding("ctrl+1", "vk1", "VK1", show=False),
-        Binding("ctrl+2", "vk2", "VK2", show=False),
-        Binding("ctrl+3", "vk3", "VK3", show=False),
-        Binding("ctrl+4", "vk4", "VK4", show=False),
-        Binding("ctrl+5", "vk5", "VK5", show=False),
+        Binding("ctrl+v", "vk1", "VK1", show=False, priority=True),
         Binding("f10", "end_session", "End Session"),
         Binding("ctrl+d", "delete_qso", "Del QSO"),
         Binding("f9", "qrz_backfill", "QRZ Backfill"),
@@ -1600,6 +1596,8 @@ class LoggerScreen(Screen):
             # Tune flrig if connected
             if self._flrig_online:
                 self.flrig.set_frequency(freq * 1000)
+                if self.mode == "SSB":
+                    self.flrig.set_mode("SSB", freq)
             self.query_one("#f-callsign", Input).focus()
 
         self.app.push_screen(SetFreqModal(self.freq_khz), on_result)
@@ -1624,6 +1622,9 @@ class LoggerScreen(Screen):
                 # Update RST defaults
                 self.query_one("#f-rst-sent", Input).value = _rst_default(mode)
                 self.query_one("#f-rst-rcvd", Input).value = _rst_default(mode)
+                # Tell the rig to change mode
+                if self._flrig_online:
+                    self.flrig.set_mode(mode, self.freq_khz)
 
         self.app.push_screen(ModePickerModal(self.mode), on_result)
 
@@ -1713,10 +1714,6 @@ class LoggerScreen(Screen):
             self.notify("flrig not connected", severity="error")
 
     def action_vk1(self) -> None: self._fire_vk(1)
-    def action_vk2(self) -> None: self._fire_vk(2)
-    def action_vk3(self) -> None: self._fire_vk(3)
-    def action_vk4(self) -> None: self._fire_vk(4)
-    def action_vk5(self) -> None: self._fire_vk(5)
 
     def action_voice_keyer(self) -> None:
         cfg = self.config

@@ -25,6 +25,8 @@ MODE_MAP: dict[str, str] = {
     "CW": "CW",
     "CWR": "CW",
     "CW-R": "CW",
+    "CW-U": "CW",
+    "CW-L": "CW",
     "AM": "AM",
     "FM": "FM",
     "FMN": "FM",
@@ -83,10 +85,12 @@ class FlrigClient:
             self._reset()
             return False
 
-    def set_mode(self, mode: str) -> bool:
-        """Set mode by canonical name. Returns True on success."""
-        # Reverse-map our mode name to something flrig understands
-        flrig_mode = _canonical_to_flrig(mode)
+    def set_mode(self, mode: str, freq_khz: Optional[float] = None) -> bool:
+        """Set mode by canonical name. Returns True on success.
+
+        freq_khz is used to pick USB vs LSB for SSB: >=10 MHz → USB, <10 MHz → LSB.
+        """
+        flrig_mode = _canonical_to_flrig(mode, freq_khz)
         try:
             proxy = self._get_proxy()
             proxy.rig.set_mode(flrig_mode)  # type: ignore[union-attr]
@@ -104,9 +108,11 @@ class FlrigClient:
         """
         try:
             proxy = self._get_proxy()
-            result = proxy.rig.cat_string(cmd)  # type: ignore[union-attr]
-            # flrig returns 0 on success
-            return int(result) == 0
+            proxy.rig.cat_string(cmd)  # type: ignore[union-attr]
+            return True
+        except xmlrpc.client.Fault:
+            # Rig is reachable but rejected the command — don't drop the connection
+            return False
         except Exception:
             self._reset()
             return False
@@ -116,11 +122,16 @@ class FlrigClient:
         return self.get_frequency() is not None
 
 
-def _canonical_to_flrig(mode: str) -> str:
-    """Best-effort map from canonical mode name back to flrig mode string."""
+def _canonical_to_flrig(mode: str, freq_khz: Optional[float] = None) -> str:
+    """Best-effort map from canonical mode name back to flrig mode string.
+
+    For SSB, picks USB (>=10 MHz) or LSB (<10 MHz) based on freq_khz.
+    Defaults to USB if freq_khz is unknown.
+    """
+    if mode.upper() == "SSB":
+        return "LSB" if (freq_khz is not None and freq_khz < 10_000) else "USB"
     mapping = {
-        "SSB": "USB",
-        "CW": "CW",
+        "CW": "CW-U",
         "AM": "AM",
         "FM": "FM",
         "FT8": "PKTUSB",
