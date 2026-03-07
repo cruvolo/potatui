@@ -1516,6 +1516,31 @@ class LoggerScreen(Screen):
         bar.add_class("hidden")
 
     # ------------------------------------------------------------------
+    # Tab wrap within entry form
+    # ------------------------------------------------------------------
+
+    _FORM_FIELDS = [
+        "#f-callsign", "#f-rst-sent", "#f-rst-rcvd", "#f-p2p",
+        "#f-name", "#f-state", "#f-notes", "#f-freq", "#btn-log",
+    ]
+
+    def on_key(self, event: events.Key) -> None:
+        focused = self.focused
+        if focused is None:
+            return
+        focused_id = f"#{focused.id}" if focused.id else None
+        if focused_id not in self._FORM_FIELDS:
+            return
+        if event.key == "tab" and focused_id == "#btn-log":
+            event.prevent_default()
+            event.stop()
+            self.query_one("#f-callsign", Input).focus()
+        elif event.key == "shift+tab" and focused_id == "#f-callsign":
+            event.prevent_default()
+            event.stop()
+            self.query_one("#btn-log", Button).focus()
+
+    # ------------------------------------------------------------------
     # Actions
     # ------------------------------------------------------------------
 
