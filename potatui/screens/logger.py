@@ -608,6 +608,10 @@ class SetFreqModal(ModalScreen):
     def on_cancel(self) -> None:
         self.dismiss(None)
 
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+
 
 class ChangeOperatorModal(ModalScreen):
     """Quick dialog to change the active operator callsign."""
