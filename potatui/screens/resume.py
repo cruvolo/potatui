@@ -31,7 +31,8 @@ LOGO_LINES = [
 SUBTITLE = "P a r k s  O n  T h e  A i r  ·  T U I  L o g g e r"
 
 _WAVE_BARS = "▁▂▃▄▅▆▇█"
-_WAVE_WIDTH = 57  # matches logo width
+_WAVE_WIDTH = 55  # matches logo width
+_PANEL_WIDTH = 88  # width of the session picker panel
 
 
 def _hsl_hex(h_deg: float, s_pct: float, l_pct: float) -> str:
@@ -87,8 +88,9 @@ class AnimatedLogo(Widget):
 
     DEFAULT_CSS = """
     AnimatedLogo {
-        width: 57;
+        width: 55;
         height: auto;
+        align: center middle;
     }
     """
 
@@ -108,48 +110,33 @@ class AnimatedLogo(Widget):
         f = self._frame
 
         # --- Logo ---
-        for row, line in enumerate(LOGO_LINES):
-            for x, ch in enumerate(line):
-                if ch == " ":
-                    text.append(" ")
-                    continue
-                # Wave sweeps left-to-right; hue oscillates green↔cyan
-                wave = x * 0.28 - f * 0.18
-                hue = 140.0 + 40.0 * math.sin(wave)          # 100°–180°
-                light = 50.0 + 18.0 * math.sin(wave * 0.7 + row * 0.4)  # 32%–68%
-                text.append(ch, style=_hsl_hex(hue, 85.0, light))
-            text.append("\n")
+        t = f / 15.0
+        base_hue = (f * 0.6) % 360.0
+        for line in LOGO_LINES:
+            text.append(line + "\n")
 
-        # --- Plasma sine wave visualiser ---
-        # Three rows, each a sum of three sines at different speeds/frequencies.
-        # The row index shifts the phase of the middle sine, making each row
-        # look distinct while still being part of a coherent moving pattern.
-        t = f / 15.0  # frame counter → seconds at 15 fps
+        # --- Plasma sine wave visualiser (single row) ---
         text.append("\n")
-        for row in range(3):
-            r = row / 2.0  # 0.0, 0.5, 1.0
-            for i in range(_WAVE_WIDTH):
-                x = i / _WAVE_WIDTH
-                # Interference of three sines → complex, organic shape
-                v = (
-                    math.sin(x * math.pi * 4 + t * 3.0) * 0.50
-                    + math.sin(x * math.pi * 7 + t * 1.7 + r * math.pi) * 0.30
-                    + math.sin((x + r * 0.3) * math.pi * 2 + t * 5.0) * 0.20
-                )
-                h = (v + 1.0) / 2.0  # normalise to 0..1
-                bar = _WAVE_BARS[int(h * (len(_WAVE_BARS) - 1))]
-                # Hue flows left-to-right and shifts over time; crests are more cyan
-                hue = 145.0 + 55.0 * math.sin(x * math.pi * 3 + t * 2.0 - h * 0.8)
-                light = 26.0 + 46.0 * h   # dark troughs, bright crests
-                sat = 78.0 + 17.0 * h     # crests are more saturated
-                text.append(bar, style=_hsl_hex(hue, sat, light))
-            text.append("\n")
+        for i in range(_WAVE_WIDTH):
+            x = i / _WAVE_WIDTH
+            v = (
+                math.sin(x * math.pi * 4 + t * 3.0) * 0.50
+                + math.sin(x * math.pi * 7 + t * 1.7) * 0.30
+                + math.sin(x * math.pi * 2 + t * 5.0) * 0.20
+            )
+            h = (v + 1.0) / 2.0
+            bar = _WAVE_BARS[int(h * (len(_WAVE_BARS) - 1))]
+            # Wave hue follows the same drifting base, offset by position and height
+            hue = (base_hue + x * 360.0 * 0.6 + h * 60.0) % 360.0
+            light = 28.0 + 44.0 * h
+            sat = 80.0 + 15.0 * h
+            text.append(bar, style=_hsl_hex(hue, sat, light))
+        text.append("\n")
 
-        # --- Subtitle with a slow brightness pulse ---
+        # --- Subtitle ---
         text.append("\n")
-        pulse = 0.55 + 0.35 * math.sin(f * 0.08)
-        grey = int(pulse * 200)
-        text.append(SUBTITLE, style=f"#{grey:02x}{grey:02x}{grey:02x}")
+        pad = " " * max(0, (_WAVE_WIDTH - len(SUBTITLE)) // 2)
+        text.append(pad + SUBTITLE, style="#888888")
 
         return text
 
@@ -166,31 +153,24 @@ class ResumeScreen(Screen):
     ResumeScreen {
         layout: vertical;
         background: $surface-darken-1;
-    }
-
-    #main-horizontal {
-        height: 1fr;
-        width: 100%;
+        align: center top;
     }
 
     #logo-panel {
-        width: 67;
-        height: 100%;
+        width: 88;
+        height: auto;
         align: center middle;
-    }
-
-    #right-area {
-        width: 1fr;
-        height: 100%;
-        align: center middle;
+        margin-top: 1;
+        margin-bottom: 1;
     }
 
     #session-panel {
-        width: 56;
+        width: 88;
         height: auto;
         border: double $primary;
         background: $surface;
         padding: 1 2;
+        margin-bottom: 1;
     }
 
     #resume-title {
@@ -224,20 +204,18 @@ class ResumeScreen(Screen):
         self.sessions = sessions
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="main-horizontal"):
-            with Container(id="logo-panel"):
-                yield AnimatedLogo()
-            with Container(id="right-area"):
-                with Container(id="session-panel"):
-                    yield Static("Resume Activation", id="resume-title")
-                    yield Static(
-                        "Select a session to resume, or start a new activation.",
-                        id="resume-subtitle",
-                    )
-                    yield DataTable(id="session-table", cursor_type="row")
-                    with Horizontal(id="btn-row"):
-                        yield Button("Resume Selected", variant="primary", id="btn-resume")
-                        yield Button("New Activation", id="btn-new")
+        with Container(id="logo-panel"):
+            yield AnimatedLogo()
+        with Container(id="session-panel"):
+            yield Static("Resume Activation", id="resume-title")
+            yield Static(
+                "Select a session to resume, or start a new activation.",
+                id="resume-subtitle",
+            )
+            yield DataTable(id="session-table", cursor_type="row")
+            with Horizontal(id="btn-row"):
+                yield Button("Resume Selected", variant="primary", id="btn-resume")
+                yield Button("New Activation", id="btn-new")
         yield Footer()
 
     def on_mount(self) -> None:
