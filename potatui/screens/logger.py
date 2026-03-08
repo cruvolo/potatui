@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from textual import events, on, work
@@ -247,6 +247,194 @@ class EditQSOModal(ModalScreen[Optional[dict]]):
     def on_key(self, event) -> None:
         if event.key == "escape":
             self.dismiss(None)
+
+
+# ---------------------------------------------------------------------------
+# Session summary modal (shown on F10 before ending)
+# ---------------------------------------------------------------------------
+
+class SessionSummaryModal(ModalScreen[bool]):
+    CSS = """
+    SessionSummaryModal { align: center middle; }
+    #summary-box {
+        width: 62;
+        height: auto;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    #summary-title {
+        text-align: center;
+        text-style: bold;
+        color: $primary;
+    }
+    #summary-subtitle {
+        text-align: center;
+        color: $text-muted;
+    }
+    .summary-rule {
+        color: $primary-darken-2;
+        margin: 1 0;
+    }
+    #summary-activation {
+        text-style: bold;
+        margin-bottom: 0;
+    }
+    .stat-grid {
+        height: auto;
+        margin: 0;
+    }
+    .stat-col {
+        width: 1fr;
+        height: auto;
+    }
+    .stat-label {
+        color: $text-muted;
+        width: auto;
+    }
+    .stat-value {
+        text-style: bold;
+        width: auto;
+    }
+    .breakdown-col {
+        width: 1fr;
+        height: auto;
+    }
+    .breakdown-header {
+        color: $text-muted;
+        text-style: bold;
+        width: auto;
+    }
+    .breakdown-row {
+        height: auto;
+    }
+    .breakdown-band {
+        width: 6;
+        color: $text-muted;
+    }
+    .breakdown-count {
+        text-style: bold;
+        width: auto;
+    }
+    #summary-files {
+        color: $text-muted;
+        text-style: italic;
+    }
+    #summary-btns {
+        align: right middle;
+        height: auto;
+        margin-top: 1;
+    }
+    """
+
+    def __init__(self, session: "Session", log_paths: list) -> None:
+        super().__init__()
+        self._session = session
+        self._log_paths = log_paths
+
+    def compose(self) -> ComposeResult:
+        from collections import Counter
+        from potatui.adif import BAND_RANGES
+
+        session = self._session
+        now = datetime.utcnow()
+        total = len(session.qsos)
+        today = now.date()
+        today_count = sum(1 for q in session.qsos if q.timestamp_utc.date() == today)
+        elapsed = now - session.start_time
+        elapsed_secs = elapsed.total_seconds()
+        h, rem = divmod(int(elapsed_secs), 3600)
+        m, s = divmod(rem, 60)
+        duration_str = f"{h:02d}:{m:02d}:{s:02d}"
+        unique_calls = len({q.callsign for q in session.qsos})
+        p2p_count = sum(1 for q in session.qsos if q.is_p2p)
+        elapsed_hours = elapsed_secs / 3600
+        if elapsed_hours < 1.0:
+            rate = int(total / elapsed_hours) if elapsed_hours > 0 and total > 0 else 0
+        else:
+            cutoff = now - timedelta(hours=1)
+            rate = sum(1 for q in session.qsos if q.timestamp_utc >= cutoff)
+
+        band_order = {name: i for i, (_, _, name) in enumerate(BAND_RANGES)}
+        band_counts = Counter(q.band for q in session.qsos)
+        mode_counts = Counter(q.mode for q in session.qsos)
+
+        rule = "─" * 54
+
+        with Container(id="summary-box"):
+            yield Static("Session Summary", id="summary-title")
+            parks_str = "  ·  ".join(session.park_refs)
+            date_str = session.start_time.strftime("%d %b %Y")
+            yield Static(f"{session.station_callsign}  ·  {parks_str}  ·  {date_str}", id="summary-subtitle")
+
+            yield Static(rule, classes="summary-rule")
+
+            if today_count >= 10:
+                yield Static(f"[green]●  Activated  —  {today_count} QSOs today[/green]", id="summary-activation")
+            else:
+                yield Static(f"[red]●  Not activated  —  {today_count} / 10 QSOs today[/red]", id="summary-activation")
+            if total != today_count:
+                yield Static(f"[dim]({total} QSOs total across all UTC days)[/dim]", classes="stat-label")
+
+            yield Static(rule, classes="summary-rule")
+
+            # Stats grid
+            with Horizontal(classes="stat-grid"):
+                with Vertical(classes="stat-col"):
+                    yield Static("Unique calls", classes="stat-label")
+                    yield Static(str(unique_calls), classes="stat-value")
+                with Vertical(classes="stat-col"):
+                    yield Static("Duration", classes="stat-label")
+                    yield Static(duration_str, classes="stat-value")
+                with Vertical(classes="stat-col"):
+                    yield Static("Rate", classes="stat-label")
+                    yield Static(f"{rate}/hr", classes="stat-value")
+                if p2p_count:
+                    with Vertical(classes="stat-col"):
+                        yield Static("P2P", classes="stat-label")
+                        yield Static(str(p2p_count), classes="stat-value")
+
+            # Band / mode breakdown
+            if band_counts or mode_counts:
+                yield Static(rule, classes="summary-rule")
+                with Horizontal(classes="stat-grid"):
+                    if band_counts:
+                        with Vertical(classes="breakdown-col"):
+                            yield Static("Band", classes="breakdown-header")
+                            for band, count in sorted(band_counts.items(), key=lambda x: band_order.get(x[0], 99)):
+                                with Horizontal(classes="breakdown-row"):
+                                    yield Static(band, classes="breakdown-band")
+                                    yield Static(str(count), classes="breakdown-count")
+                    if mode_counts:
+                        with Vertical(classes="breakdown-col"):
+                            yield Static("Mode", classes="breakdown-header")
+                            for mode, count in sorted(mode_counts.items(), key=lambda x: -x[1]):
+                                with Horizontal(classes="breakdown-row"):
+                                    yield Static(mode, classes="breakdown-band")
+                                    yield Static(str(count), classes="breakdown-count")
+
+            yield Static(rule, classes="summary-rule")
+            for path in self._log_paths:
+                yield Static(str(path), id="summary-files")
+
+            with Horizontal(id="summary-btns"):
+                yield Button("Cancel", id="summary-cancel")
+                yield Button("End Session", variant="error", id="summary-confirm")
+
+    def on_mount(self) -> None:
+        self.query_one("#summary-confirm", Button).focus()
+
+    @on(Button.Pressed, "#summary-confirm")
+    def on_confirm(self) -> None:
+        self.dismiss(True)
+
+    @on(Button.Pressed, "#summary-cancel")
+    def on_cancel(self) -> None:
+        self.dismiss(False)
+
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.dismiss(False)
 
 
 # ---------------------------------------------------------------------------
@@ -933,6 +1121,7 @@ class LoggerScreen(Screen):
         self._last_spot_data: tuple[datetime, str, str] | None = None  # (utc_time, spotter, comments)
         self._qrz_filled_name: bool = False   # True if #f-name was auto-filled by QRZ
         self._qrz_filled_state: bool = False  # True if #f-state was auto-filled by QRZ
+        self._current_utc_date = datetime.utcnow().date()
         self._log_paths = self._make_log_paths()
         self._json_path = self._make_json_path()
 
@@ -1086,12 +1275,36 @@ class LoggerScreen(Screen):
             flrig_widget.remove_class("flrig-online")
 
     def _update_qso_count(self) -> None:
-        count = len(self.session.qsos)
-        count_widget = self.query_one("#hdr-qso-count", Static)
-        count_widget.update(f"QSOs: {count}")
+        now = datetime.utcnow()
+        today = now.date()
+        today_count = sum(1 for q in self.session.qsos if q.timestamp_utc.date() == today)
+        total_count = len(self.session.qsos)
+        circle = "[green]●[/green]" if today_count >= 10 else "[red]●[/red]"
+        elapsed_hours = (now - self.session.start_time).total_seconds() / 3600
+        if elapsed_hours < 1.0:
+            count = len(self.session.qsos)
+            rate = int(count / elapsed_hours) if elapsed_hours > 0 and count > 0 else 0
+        else:
+            cutoff = now - timedelta(hours=1)
+            rate = sum(1 for q in self.session.qsos if q.timestamp_utc >= cutoff)
+        rate_str = f"{rate}/hr" if (rate > 0 or self.session.qsos) else "--/hr"
+        if total_count != today_count:
+            text = f"{circle} QSOs: {today_count} ({total_count} total)  {rate_str}"
+        else:
+            text = f"{circle} QSOs: {today_count}  {rate_str}"
+        self.query_one("#hdr-qso-count", Static).update(text)
 
     def _tick_clock(self) -> None:
         now = datetime.utcnow()
+        if now.date() != self._current_utc_date:
+            self._current_utc_date = now.date()
+            self.notify(
+                "UTC date has changed — new activation day has begun! "
+                "You need 10 QSOs today for a valid activation.",
+                severity="warning",
+                timeout=15,
+            )
+            self._update_qso_count()
         utc_str = now.strftime("%H:%Mz")
         elapsed = now - self.session.start_time
         h, rem = divmod(int(elapsed.total_seconds()), 3600)
@@ -1099,6 +1312,7 @@ class LoggerScreen(Screen):
         elapsed_str = f"{h:02d}:{m:02d}:{s:02d}"
         self.query_one("#hdr-utc", Static).update(utc_str)
         self.query_one("#hdr-elapsed", Static).update(elapsed_str)
+        self._update_qso_count()
         self._update_last_spotted_bar()
 
     @work(exclusive=True, group="self-spot-poll")
@@ -1811,7 +2025,7 @@ class LoggerScreen(Screen):
                 self.app.exit()
 
         self.app.push_screen(
-            ConfirmModal(f"End session? ({len(self.session.qsos)} QSOs logged)\nADIF will be exported."),
+            SessionSummaryModal(self.session, self._log_paths),
             on_confirm,
         )
 
