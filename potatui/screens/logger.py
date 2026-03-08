@@ -141,6 +141,9 @@ class EditQSOModal(ModalScreen[Optional[dict]]):
     .edit-input {
         width: 1fr;
     }
+    #e-mode {
+        width: 1fr;
+    }
     #edit-btn-row {
         height: auto;
         margin-top: 1;
@@ -168,6 +171,13 @@ class EditQSOModal(ModalScreen[Optional[dict]]):
             with Horizontal(classes="edit-row"):
                 yield Label("Freq (kHz):", classes="edit-label")
                 yield Input(value=f"{self.qso.freq_khz:.1f}", id="e-freq", classes="edit-input")
+            with Horizontal(classes="edit-row"):
+                yield Label("Mode:", classes="edit-label")
+                yield Select(
+                    [(m, m) for m in MODES],
+                    value=self.qso.mode if self.qso.mode in MODES else Select.BLANK,
+                    id="e-mode",
+                )
             with Horizontal(classes="edit-row"):
                 yield Label("Name:", classes="edit-label")
                 yield Input(value=self.qso.name, id="e-name", classes="edit-input")
@@ -200,6 +210,7 @@ class EditQSOModal(ModalScreen[Optional[dict]]):
             "rst_rcvd": self.query_one("#e-rst-rcvd", Input).value.strip(),
             "freq_khz": freq_khz,
             "band": band if band != "?" else self.qso.band,
+            "mode": self.query_one("#e-mode", Select).value or self.qso.mode,
             "name": self.query_one("#e-name", Input).value.strip(),
             "state": self.query_one("#e-state", Input).value.strip(),
             "p2p_ref": p2p_ref,
