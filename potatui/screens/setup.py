@@ -299,7 +299,7 @@ class SetupScreen(Screen):
             station_callsign=callsign,
             park_refs=refs,
             active_park_ref=refs[0],
-            grid=self.config.grid,
+            grid="",
             rig=rig,
             antenna=antenna,
             power_w=power_w,

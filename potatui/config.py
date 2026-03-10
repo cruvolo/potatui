@@ -118,9 +118,6 @@ def save_config(cfg: Config) -> None:
 # Your station callsign.  Used in ADIF exports and self-spots.
 callsign = {q(cfg.callsign)}
 
-# Maidenhead grid square (4 or 6 characters, e.g. "EN34" or "EN34ab").
-grid = {q(cfg.grid)}
-
 # Distance units shown in the QRZ callsign info strip: "mi" or "km"
 distance_unit = {q(cfg.distance_unit)}
 

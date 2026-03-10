@@ -119,11 +119,6 @@ class SettingsScreen(Screen):
                     yield Input(value=self.config.callsign, placeholder="W1AW", id="s-callsign", classes="field-input")
 
                 with Horizontal(classes="field-row"):
-                    yield Label("Grid Square:", classes="field-label")
-                    yield Input(value=self.config.grid, placeholder="EN34", id="s-grid", classes="field-input")
-                yield Static("4 or 6 character Maidenhead locator (e.g. EN34 or EN34ab)", classes="field-hint")
-
-                with Horizontal(classes="field-row"):
                     yield Label("Distance Units:", classes="field-label")
                     yield Select(
                         [("Miles (mi)", "mi"), ("Kilometres (km)", "km")],
@@ -218,7 +213,6 @@ class SettingsScreen(Screen):
             return self.query_one(f"#{widget_id}", Input).value.strip()
 
         callsign = val("s-callsign").upper()
-        grid = val("s-grid").upper()
         dist_sel = self.query_one("#s-distance-unit", Select)
         distance_unit = str(dist_sel.value) if dist_sel.value != Select.BLANK else "mi"
         log_dir = val("s-log-dir") or "~/potatui-logs"
@@ -243,7 +237,7 @@ class SettingsScreen(Screen):
 
         cfg = Config(
             callsign=callsign,
-            grid=grid,
+            grid=self.config.grid,  # preserved from existing config, no longer editable in UI
             distance_unit=distance_unit,
             log_dir=log_dir,
             rig=rig,
