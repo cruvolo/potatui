@@ -20,6 +20,12 @@ CONFIG_DIR = Path(user_config_dir("potatui", appauthor=False))
 CONFIG_PATH = CONFIG_DIR / "config.toml"
 
 
+def _default_log_dir() -> str:
+    if sys.platform in ("win32", "darwin"):
+        return str(Path.home() / "Documents" / "potatui-logs")
+    return str(Path.home() / "potatui-logs")
+
+
 def _default_config_toml() -> str:
     """Default config content from packaged resource (single source of truth)."""
     return (resources.files("potatui") / "resources" / "default_config.toml").read_text(
@@ -64,7 +70,7 @@ class Config:
     rig: str = ""
     antenna: str = ""
     power_w: int = 100
-    log_dir: str = "~/potatui-logs"
+    log_dir: str = _default_log_dir()
     flrig_host: str = "localhost"
     flrig_port: int = 12345
     pota_api_base: str = "https://api.pota.app"
