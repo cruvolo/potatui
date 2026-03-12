@@ -365,4 +365,4 @@ When you QSY to a spot (F5) or set a run frequency (F2), Potatui calls flrig to 
 
 ## License
 
-MIT
+[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) — free to use, share, and adapt with attribution; non-commercial use only; derivatives must use the same license.
