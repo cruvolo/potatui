@@ -1015,7 +1015,7 @@ class LoggerScreen(Screen):
         width: 1fr;
     }
 
-    #qrz-info-bar {
+    .qrz-info-bar {
         height: 3;
         background: $surface;
         border: round $accent;
@@ -1025,20 +1025,24 @@ class LoggerScreen(Screen):
         content-align: left middle;
     }
 
-    #qrz-info-bar.hidden {
+    .qrz-info-bar.hidden {
         display: none;
     }
 
-    #qrz-info-bar.pending {
+    .qrz-info-bar.pending {
         color: $text-muted;
         text-style: italic;
         border: round $accent-darken-2;
     }
 
-    #qrz-info-bar.notfound {
+    .qrz-info-bar.notfound {
         color: $text-muted;
         text-style: none;
         border: round $surface-lighten-2;
+    }
+
+    #qrz-info-container {
+        height: auto;
     }
 
     #p2p-info-bar {
@@ -1122,6 +1126,7 @@ class LoggerScreen(Screen):
         self._last_spot_data: tuple[datetime, str, str] | None = None  # (utc_time, spotter, comments)
         self._qrz_filled_name: bool = False   # True if #f-name was auto-filled by QRZ
         self._qrz_filled_state: bool = False  # True if #f-state was auto-filled by QRZ
+        self._qrz_bars: dict[str, Static] = {}  # callsign → QRZ info bar widget
         self._current_utc_date = datetime.utcnow().date()
         self._log_paths = self._make_log_paths()
         self._json_path = self._make_json_path()
@@ -1195,8 +1200,8 @@ class LoggerScreen(Screen):
                     yield Label("Notes", classes="form-label")
                     yield Input(placeholder="optional", id="f-notes")
 
-        # QRZ callsign info strip (hidden when empty)
-        yield Static("", id="qrz-info-bar", classes="hidden")
+        # QRZ callsign info strips (one per callsign in multi-callsign mode)
+        yield Vertical(id="qrz-info-container")
 
         # P2P park info strip (hidden when empty)
         yield Static("", id="p2p-info-bar", classes="hidden")
@@ -1609,30 +1614,36 @@ class LoggerScreen(Screen):
 
     @on(Input.Changed, "#f-callsign")
     def on_callsign_changed(self, event: Input.Changed) -> None:
-        callsign = event.value.strip().upper()
+        raw_cs = event.value.strip().upper()
+        callsigns = [cs.strip() for cs in raw_cs.split(",") if cs.strip()]
         dup_widget = self.query_one("#dup-warning", Static)
 
-        # Multi-callsign mode: suppress per-callsign QRZ and dup logic
-        if "," in callsign:
-            dup_widget.update("")
-            self._clear_qrz_info()
-            return
-
-        if callsign and self.session.is_duplicate(callsign, self.band):
-            dup_widget.update("DUP")
+        # Dup detection: only meaningful for single callsign
+        if len(callsigns) == 1 and self.session.is_duplicate(callsigns[0], self.band):
+            dup_widget.update("DUPE!")
         else:
             dup_widget.update("")
 
-        # Trigger QRZ lookup when the callsign looks complete
-        if self._looks_like_callsign(callsign):
-            self._lookup_qrz(callsign)
-        else:
-            self._clear_qrz_info()
-            if not callsign:
-                self.query_one("#f-name", Input).value = ""
-                self.query_one("#f-state", Input).value = ""
-                self._qrz_filled_name = False
-                self._qrz_filled_state = False
+        # Remove bars for callsigns no longer in the field
+        container = self.query_one("#qrz-info-container", Vertical)
+        for cs in [cs for cs in list(self._qrz_bars) if cs not in callsigns]:
+            self._qrz_bars.pop(cs).remove()
+
+        # Add bars for new callsigns; trigger lookup for valid-looking ones
+        for cs in callsigns:
+            if cs not in self._qrz_bars:
+                bar = Static("", classes="qrz-info-bar hidden")
+                self._qrz_bars[cs] = bar
+                container.mount(bar)
+            if self._looks_like_callsign(cs) and "hidden" in self._qrz_bars[cs].classes:
+                self._trigger_qrz_lookup(cs)
+
+        # If no callsigns at all, clear auto-filled name/state
+        if not callsigns:
+            self.query_one("#f-name", Input).value = ""
+            self.query_one("#f-state", Input).value = ""
+            self._qrz_filled_name = False
+            self._qrz_filled_state = False
 
     @staticmethod
     def _looks_like_callsign(cs: str) -> bool:
@@ -1656,55 +1667,60 @@ class LoggerScreen(Screen):
             dist_str = f"{direction} {dist_str}"
         return dist_str
 
-    @work(exclusive=True, group="qrz-lookup")
-    async def _lookup_qrz(self, callsign: str) -> None:
+    def _trigger_qrz_lookup(self, callsign: str) -> None:
+        """Start a per-callsign QRZ lookup worker (exclusive within its group)."""
+        self.run_worker(
+            self._do_qrz_lookup(callsign),
+            exclusive=True,
+            group=f"qrz-{callsign}",
+        )
+
+    async def _do_qrz_lookup(self, callsign: str) -> None:
         # Debounce: wait for typing to pause before hitting QRZ
         await asyncio.sleep(1.0)
 
-        # Stale-check: if the form callsign changed while we were waiting, bail out
-        current_cs = self.query_one("#f-callsign", Input).value.strip().upper()
-        if current_cs != callsign:
+        # Stale-check: callsign must still have a bar
+        if callsign not in self._qrz_bars:
             return
+        bar = self._qrz_bars[callsign]
 
         from potatui.qrz import (
             bearing_deg, distance_from_grid,
             grid_to_latlon, haversine_km,
         )
-        bar = self.query_one("#qrz-info-bar", Static)
 
         if not self._qrz.configured:
-            bar.set_classes("hidden")
+            bar.set_classes("qrz-info-bar hidden")
             return
 
-        bar.set_classes("pending")
+        bar.set_classes("qrz-info-bar pending")
         bar.update("  QRZ: looking up…")
 
         info = await self._qrz.lookup(callsign)
 
         # Stale-check again after the HTTP round-trip
-        current_cs = self.query_one("#f-callsign", Input).value.strip().upper()
-        if current_cs != callsign:
+        if callsign not in self._qrz_bars or self._qrz_bars[callsign] is not bar:
             return
 
         if info is None:
-            bar.set_classes("notfound")
+            bar.set_classes("qrz-info-bar notfound")
             bar.update(f"  QRZ: {callsign} — not found")
             self._update_qrz_indicator()
             return
 
-        # Auto-fill name and state fields if empty or previously auto-filled by QRZ
-        # (state only if P2P not entered)
-        if info.name:
-            name_inp = self.query_one("#f-name", Input)
-            if not name_inp.value.strip() or self._qrz_filled_name:
-                name_inp.value = info.name
-                self._qrz_filled_name = True
+        # Auto-fill name and state only in single-callsign mode
+        if len(self._qrz_bars) == 1:
+            if info.name:
+                name_inp = self.query_one("#f-name", Input)
+                if not name_inp.value.strip() or self._qrz_filled_name:
+                    name_inp.value = info.name
+                    self._qrz_filled_name = True
 
-        p2p_val = self.query_one("#f-p2p", Input).value.strip().upper()
-        state_inp = self.query_one("#f-state", Input)
-        if (not state_inp.value.strip() or self._qrz_filled_state) and p2p_val in ("", "US-") and info.state:
-            state_inp.value = info.state
-            self._qrz_filled_state = True
+            p2p_val = self.query_one("#f-p2p", Input).value.strip().upper()
+            state_inp = self.query_one("#f-state", Input)
+            if (not state_inp.value.strip() or self._qrz_filled_state) and p2p_val in ("", "US-") and info.state:
+                state_inp.value = info.state
+                self._qrz_filled_state = True
 
         parts = [f"  {info.callsign}"]
         if info.name:
@@ -1745,14 +1761,14 @@ class LoggerScreen(Screen):
             dist_str = self.format_dist_bearing(dist_km, brg)
             parts.append(dist_str)
 
-        bar.set_classes("")
+        bar.set_classes("qrz-info-bar")
         bar.update("  ·  ".join(parts))
         self._update_qrz_indicator()
 
     def _clear_qrz_info(self) -> None:
-        bar = self.query_one("#qrz-info-bar", Static)
-        bar.update("")
-        bar.set_classes("hidden")
+        for bar in list(self._qrz_bars.values()):
+            bar.remove()
+        self._qrz_bars.clear()
 
     @on(Input.Changed, "#f-freq")
     def on_freq_changed(self, event: Input.Changed) -> None:
