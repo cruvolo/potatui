@@ -794,17 +794,19 @@ class LoggerScreen(Screen):
     BINDINGS = [
         Binding("f2", "set_freq", "Set Run Freq"),
         Binding("f3", "mode_picker", "Mode"),
-        Binding("f4", "edit_last_qso", "Edit QSOs"),
+        Binding("f4", "edit_last_qso", "QSO Table"),
         Binding("f5", "goto_spots", "Spots"),
         Binding("ctrl+s", "goto_spots", "Spots", show=False),
         Binding("f6", "self_spot", "Self-Spot"),
         Binding("f7", "commander", "Commander"),
         Binding("f8", "settings", "Settings"),
         Binding("f10", "end_session", "End Session"),
-        Binding("ctrl+d", "delete_qso", "Del QSO"),
-        Binding("f9", "qrz_backfill", "QRZ Backfill"),
-        Binding("escape", "clear_form", "Clear QSO"),
-        Binding("ctrl+o", "change_operator", "Operator change"),
+        Binding("ctrl+o", "change_operator", "Operator"),
+        Binding("escape", "clear_form", "Clear / Back"),
+        # Table-mode only (shown when QSO table is focused)
+        Binding("ctrl+d", "delete_qso", "Delete"),
+        Binding("ctrl+l", "qrz_lookup_selected", "Lookup"),
+        Binding("ctrl+b", "qrz_backfill", "Backfill All"),
     ]
 
     CSS = """
@@ -1015,6 +1017,7 @@ class LoggerScreen(Screen):
     DataTable {
         height: 1fr;
     }
+
     """
 
     def __init__(
@@ -1044,6 +1047,7 @@ class LoggerScreen(Screen):
         self._qrz_filled_name: bool = False   # True if #f-name was auto-filled by QRZ
         self._qrz_filled_state: bool = False  # True if #f-state was auto-filled by QRZ
         self._qrz_bars: dict[str, Static] = {}  # callsign → QRZ info bar widget
+        self._table_focused: bool = False  # True when QSO table has focus
         self._current_utc_date = datetime.utcnow().date()
         self._log_paths = self._make_log_paths()
         self._json_path = self._make_json_path()
@@ -1397,13 +1401,27 @@ class LoggerScreen(Screen):
         self._log_qso()
 
     def on_descendant_focus(self, event: events.DescendantFocus) -> None:
-        """Select signal digits on RST field focus so typing overwrites just that part."""
+        """Track table focus for context-sensitive footer; select RST signal digits on focus."""
+        now_table = isinstance(event.widget, DataTable)
+        if now_table != self._table_focused:
+            self._table_focused = now_table
+            self.refresh_bindings()
+
         if event.widget.id not in ("f-rst-sent", "f-rst-rcvd"):
             return
         inp = event.widget
         val = inp.value
         if len(val) > 1:
             inp.selection = Selection(1, len(val))
+
+    def check_action(self, action: str, parameters: tuple) -> bool:
+        """Show form bindings when entry form is active, table bindings when table is active."""
+        in_table = self._table_focused
+        if action in ("set_freq", "mode_picker", "goto_spots", "self_spot", "commander", "settings", "edit_last_qso", "end_session", "change_operator"):
+            return not in_table
+        if action in ("delete_qso", "qrz_lookup_selected", "qrz_backfill"):
+            return in_table
+        return True
 
     @on(Input.Submitted, "#f-callsign")
     @on(Input.Submitted, "#f-rst-sent")
@@ -1882,8 +1900,8 @@ class LoggerScreen(Screen):
         """Return the QSO id of the currently highlighted table row, or None."""
         table = self.query_one("#qso-table", DataTable)
         try:
-            row_data = table.get_row_at(table.cursor_row)
-            return int(row_data[0])
+            row_key = list(table.rows)[table.cursor_row]
+            return int(row_key.value)
         except Exception:
             return None
 
@@ -1922,9 +1940,48 @@ class LoggerScreen(Screen):
         if qso_id is not None:
             self._open_edit_for_qso_id(qso_id)
 
+    def action_edit_selected_qso(self) -> None:
+        """Enter (table mode) — edit the selected QSO."""
+        qso_id = self._qso_id_from_table_cursor()
+        if qso_id is not None:
+            self._open_edit_for_qso_id(qso_id)
+
+    @work(exclusive=True, group="qrz-lookup-selected")
+    async def action_qrz_lookup_selected(self) -> None:
+        """Ctrl+L (table mode) — QRZ lookup for the selected QSO."""
+        if not self._qrz.configured:
+            self.notify("QRZ not configured", severity="warning")
+            return
+        qso_id = self._qso_id_from_table_cursor()
+        if qso_id is None:
+            return
+        qso = next((q for q in self.session.qsos if q.qso_id == qso_id), None)
+        if qso is None:
+            return
+        self.notify(f"QRZ: looking up {qso.callsign}…")
+        info = await self._qrz.lookup(qso.callsign)
+        if info:
+            state = qso.state if qso.is_p2p else (info.state or qso.state)
+            self.session.update_qso(qso.qso_id, name=info.name, state=state)
+            self._rebuild_table()
+            self._save_session()
+            try:
+                for park_ref, log_path in zip(self.session.park_refs, self._log_paths):
+                    write_adif(self.session, log_path, park_ref)
+            except Exception as e:
+                self.notify(f"ADIF rewrite error: {e}", severity="error")
+                return
+            self._update_qrz_indicator()
+            self.notify(f"QRZ: {qso.callsign} — {info.name or 'updated'}")
+        else:
+            self.notify(f"QRZ: {qso.callsign} — not found", severity="warning")
+
     def action_clear_form(self) -> None:
-        """Escape — clear entry form and return focus to callsign."""
-        self._reset_form()
+        """Escape — return focus to callsign (table mode) or clear entry form (form mode)."""
+        if self._table_focused:
+            self.query_one("#f-callsign", Input).focus()
+        else:
+            self._reset_form()
 
     def action_goto_spots(self) -> None:
         from potatui.screens.spots import SpotsScreen
@@ -2029,7 +2086,9 @@ class LoggerScreen(Screen):
                 except Exception as e:
                     self.notify(f"ADIF rewrite error: {e}", severity="error")
 
-        self.app.push_screen(ConfirmModal(f"Delete QSO #{qso_id}?"), on_confirm)
+        qso = next((q for q in self.session.qsos if q.qso_id == qso_id), None)
+        label = qso.callsign if qso else "selected QSO"
+        self.app.push_screen(ConfirmModal(f"Delete QSO with {label}?"), on_confirm)
 
     @work(exclusive=True, group="qrz-backfill")
     async def action_qrz_backfill(self) -> None:
