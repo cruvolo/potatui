@@ -183,12 +183,14 @@ class SpotsScreen(Screen):
         flrig: FlrigClient,
         park_latlon: tuple[float, float] | None = None,
         session: Session | None = None,
+        offline: bool = False,
     ) -> None:
         super().__init__()
         self.config = config
         self.flrig = flrig
         self._park_latlon = park_latlon
         self._session = session
+        self._offline = offline
         self._spots: list[Spot] = []
         self._filtered: list[Spot] = []
         self._park_grid_cache: dict[str, str] = {}  # ref → grid6 from park_db or API
@@ -263,6 +265,10 @@ class SpotsScreen(Screen):
     async def _do_refresh(self) -> None:
         error_widget = self.query_one("#error-msg", Static)
         error_widget.update("")
+
+        if self._offline:
+            error_widget.update("Offline mode — live spots unavailable")
+            return
 
         spots = await fetch_spots(self.config.pota_api_base)
         if not spots:

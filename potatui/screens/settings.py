@@ -10,7 +10,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, ScrollableContainer
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Input, Label, Select, Static
+from textual.widgets import Button, Checkbox, Footer, Input, Label, Select, Static
 
 from potatui.config import CONFIG_PATH, Config, save_config
 
@@ -191,6 +191,15 @@ class SettingsScreen(Screen):
                     yield Input(value=self.config.qrz_api_url, placeholder="https://xmldata.qrz.com/xml/current/", id="s-qrz-url", classes="field-input")
                 yield Static("Leave as default unless using an alternative QRZ endpoint.", classes="field-hint")
 
+                # ── App ─────────────────────────────────────────────────
+                yield Static("App", classes="section-heading")
+                yield Static("─" * 60, classes="section-rule")
+
+                with Horizontal(classes="field-row"):
+                    yield Label("Offline Mode:", classes="field-label")
+                    yield Checkbox("", value=self.config.offline_mode, id="s-offline-mode")
+                yield Static("Disable QRZ lookups, live spots, and self-spotting. Use at parks with no internet.", classes="field-hint")
+
                 # ── Config path ─────────────────────────────────────────
                 yield Static("─" * 60, classes="section-rule")
                 yield Static(f"Config file: {CONFIG_PATH}", classes="field-hint", id="config-path-hint")
@@ -233,6 +242,8 @@ class SettingsScreen(Screen):
         except ValueError:
             return "flrig port must be a number (e.g. 12345)."
 
+        offline_mode = self.query_one("#s-offline-mode", Checkbox).value
+
         cfg = Config(
             callsign=callsign,
             grid=self.config.grid,  # preserved from existing config, no longer editable in UI
@@ -247,6 +258,7 @@ class SettingsScreen(Screen):
             qrz_username=qrz_user,
             qrz_password=qrz_pass,
             qrz_api_url=qrz_url,
+            offline_mode=offline_mode,
             # vk1–vk5 preserved as-is; commands are now managed via the Commander (F7).
             vk1=self.config.vk1, vk2=self.config.vk2, vk3=self.config.vk3,
             vk4=self.config.vk4, vk5=self.config.vk5,

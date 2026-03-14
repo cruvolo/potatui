@@ -55,6 +55,7 @@ class LoggerScreen(Screen):
         Binding("f8", "settings", "Settings"),
         Binding("f10", "end_session", "End Session"),
         Binding("ctrl+o", "change_operator", "Operator"),
+        Binding("ctrl+n", "toggle_offline", "Offline Mode", show=False),
         Binding("escape", "clear_form", "Clear / Back"),
         # Table-mode only (shown when QSO table is focused)
         Binding("ctrl+d", "delete_qso", "Delete"),
@@ -94,6 +95,8 @@ class LoggerScreen(Screen):
         self._qrz_bars: dict[str, Static] = {}  # callsign → QRZ info bar widget
         self._celebrated_100: bool = False  # fire rainbow only once per session
         self._table_focused: bool = False  # True when QSO table has focus
+        self._offline: bool = config.offline_mode  # True = skip all internet calls
+        self._offline_manual: bool = config.offline_mode  # True = user explicitly set offline
         self._current_utc_date = datetime.utcnow().date()
         self._log_paths = self._make_log_paths()
         self._json_path = self._make_json_path()
@@ -186,7 +189,12 @@ class LoggerScreen(Screen):
         self.set_interval(2.0, self._poll_flrig)
         self.set_interval(30.0, self._check_internet_connectivity)
         self.set_interval(60.0, self._poll_spots_for_self)
-        self._check_internet_connectivity()
+        if self._offline_manual:
+            net_widget = self.query_one("#hdr-net", Static)
+            net_widget.update("OFFL")
+            net_widget.set_classes("net-offline-manual")
+        else:
+            self._check_internet_connectivity()
         self._fetch_park_location()
         self._poll_spots_for_self()
         self._update_qrz_indicator()
@@ -207,8 +215,13 @@ class LoggerScreen(Screen):
                 return
             except Exception:
                 pass
-        from potatui.pota_api import lookup_park
-        info = await lookup_park(self.session.active_park_ref, self.config.pota_api_base)
+        if self._offline:
+            # Try local DB only — no API call
+            from potatui.park_db import park_db
+            info = park_db.lookup(self.session.active_park_ref) if park_db.loaded else None
+        else:
+            from potatui.pota_api import lookup_park
+            info = await lookup_park(self.session.active_park_ref, self.config.pota_api_base)
         if info:
             if info.lat is not None and info.lon is not None:
                 self._park_latlon = (info.lat, info.lon)
@@ -321,6 +334,8 @@ class LoggerScreen(Screen):
     @work(exclusive=True, group="self-spot-poll")
     async def _poll_spots_for_self(self) -> None:
         """Fetch current POTA spots and find the most recent one for our callsign."""
+        if self._offline:
+            return
         from potatui.pota_api import fetch_spots
         spots = await fetch_spots(self.config.pota_api_base)
         my_call = self.session.operator.upper()
@@ -412,14 +427,17 @@ class LoggerScreen(Screen):
         from potatui.park_db import check_internet
         online = await check_internet(self.config.pota_api_base)
         net_widget = self.query_one("#hdr-net", Static)
+        if self._offline_manual:
+            # Manual override — keep showing offline-manual indicator, don't change _offline
+            return
         if online:
-            net_widget.add_class("net-online")
-            net_widget.remove_class("net-offline")
-            net_widget.remove_class("net-unknown")
+            net_widget.update("net")
+            net_widget.set_classes("net-online")
+            self._offline = False
         else:
-            net_widget.add_class("net-offline")
-            net_widget.remove_class("net-online")
-            net_widget.remove_class("net-unknown")
+            net_widget.update("net")
+            net_widget.set_classes("net-offline")
+            self._offline = True
 
     def _add_qso_row(self, qso: QSO, display_num: int) -> None:
         table = self.query_one("#qso-table", DataTable)
@@ -683,6 +701,10 @@ class LoggerScreen(Screen):
             return
         bar = self._qrz_bars[callsign]
 
+        if self._offline:
+            bar.set_classes("qrz-info-bar hidden")
+            return
+
         from potatui.qrz import (
             bearing_deg,
             distance_from_grid,
@@ -826,11 +848,17 @@ class LoggerScreen(Screen):
 
     @work(exclusive=True, group="p2p-lookup")
     async def _lookup_p2p_park(self, refs: list[str], raw: str) -> None:
-        from potatui.pota_api import lookup_park
         from potatui.qrz import bearing_deg, haversine_km
-        self._set_p2p_info(f"  P2P: {', '.join(refs)} — looking up…", warn=False)
 
-        results = [(ref, await lookup_park(ref, self.config.pota_api_base)) for ref in refs]
+        if self._offline:
+            from potatui.park_db import park_db
+            results = [(ref, park_db.lookup(ref) if park_db.loaded else None) for ref in refs]
+            suffix = " (local DB only)"
+        else:
+            from potatui.pota_api import lookup_park
+            self._set_p2p_info(f"  P2P: {', '.join(refs)} — looking up…", warn=False)
+            results = [(ref, await lookup_park(ref, self.config.pota_api_base)) for ref in refs]
+            suffix = ""
 
         # Discard if the field changed while we were looking up
         current = self.query_one("#f-p2p", Input).value.strip().upper()
@@ -868,7 +896,10 @@ class LoggerScreen(Screen):
                 segments.append(f"{part} (incomplete)")
                 has_error = True
 
-        self._set_p2p_info("  " + "  ·  ".join(segments), warn=has_error)
+        info_text = "  " + "  ·  ".join(segments)
+        if suffix:
+            info_text += suffix
+        self._set_p2p_info(info_text, warn=has_error)
         if first_state:
             self.query_one("#f-state", Input).value = first_state
 
@@ -1073,6 +1104,7 @@ class LoggerScreen(Screen):
                 flrig=self.flrig,
                 park_latlon=self._park_latlon,
                 session=self.session,
+                offline=self._offline,
             )
         )
 
@@ -1084,8 +1116,26 @@ class LoggerScreen(Screen):
                 freq_khz=self.freq_khz,
                 mode=self.mode,
                 pota_api_base=self.config.pota_api_base,
+                offline=self._offline,
             )
         )
+
+    def action_toggle_offline(self) -> None:
+        from potatui.config import save_config
+        self._offline = not self._offline
+        self._offline_manual = self._offline
+        self.config.offline_mode = self._offline
+        save_config(self.config)
+        net_widget = self.query_one("#hdr-net", Static)
+        if self._offline:
+            net_widget.update("OFFL")
+            net_widget.set_classes("net-offline-manual")
+            self.notify("Offline mode ON — QRZ, spots, and self-spotting disabled", severity="warning")
+        else:
+            net_widget.update("net")
+            net_widget.set_classes("net-unknown")
+            self.notify("Offline mode OFF — network features re-enabled")
+            self._check_internet_connectivity()
 
     def _fire_cat_slot(self, label: str, cmd: str) -> None:
         ok = self.flrig.send_cat_string(cmd)

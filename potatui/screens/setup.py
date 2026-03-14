@@ -239,9 +239,13 @@ class SetupScreen(Screen):
         parts = []
         for ref in refs:
             if ref not in self._park_names:
-                info = await lookup_park(ref, self.config.pota_api_base)
+                if self.config.offline_mode:
+                    from potatui.park_db import park_db
+                    info = park_db.lookup(ref) if park_db.loaded else None
+                else:
+                    info = await lookup_park(ref, self.config.pota_api_base)
                 self._park_infos[ref] = info
-                self._park_names[ref] = info.name if info else "Unknown park"
+                self._park_names[ref] = info.name if info else ("Unknown park (offline)" if self.config.offline_mode else "Unknown park")
             parts.append(f"{ref}: {self._park_names[ref]}")
         display.update("  |  ".join(parts))
         self._update_state_field(refs)
@@ -396,9 +400,13 @@ class SetupScreen(Screen):
             if ref in self._park_names:
                 park_names[ref] = self._park_names[ref]
             else:
-                info = await lookup_park(ref, self.config.pota_api_base)
+                if self.config.offline_mode:
+                    from potatui.park_db import park_db
+                    info = park_db.lookup(ref) if park_db.loaded else None
+                else:
+                    info = await lookup_park(ref, self.config.pota_api_base)
                 self._park_infos[ref] = info
-                self._park_names[ref] = info.name if info else "Unknown (API unavailable)"
+                self._park_names[ref] = info.name if info else "Unknown (offline)" if self.config.offline_mode else "Unknown (API unavailable)"
                 park_names[ref] = self._park_names[ref]
                 newly_fetched = True
 

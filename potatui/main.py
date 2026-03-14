@@ -69,6 +69,10 @@ class PotaLogApp(App):
 
     def _check_park_db(self) -> None:
         """Show the park DB download/refresh modal if needed, else proceed."""
+        if self._config.offline_mode:
+            self._continue_to_start()
+            return
+
         from potatui.park_db import park_db
         from potatui.screens.park_update import ParkDbModal
 

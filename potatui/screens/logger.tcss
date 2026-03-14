@@ -52,6 +52,11 @@ LoggerScreen {
     color: $text-muted;
 }
 
+#hdr-net.net-offline-manual {
+    background: $warning;
+    color: $background;
+}
+
 #hdr-spacer {
     width: 1fr;
 }

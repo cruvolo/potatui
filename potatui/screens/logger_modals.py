@@ -533,6 +533,7 @@ class SelfSpotModal(ModalScreen[None]):
         padding: 1 2;
     }
     #spot-title { text-align: center; text-style: bold; margin-bottom: 1; }
+    #spot-offline-note { color: $warning; margin-bottom: 1; height: auto; }
     .spot-row { height: auto; margin-bottom: 1; }
     .spot-label { width: 14; padding-top: 1; color: $text-muted; }
     .spot-input { width: 1fr; }
@@ -546,6 +547,7 @@ class SelfSpotModal(ModalScreen[None]):
         freq_khz: float,
         mode: str,
         pota_api_base: str,
+        offline: bool = False,
     ) -> None:
         super().__init__()
         self._callsign = callsign
@@ -553,31 +555,35 @@ class SelfSpotModal(ModalScreen[None]):
         self._freq_khz = freq_khz
         self._mode = mode
         self._api_base = pota_api_base
+        self._offline = offline
 
     def compose(self) -> ComposeResult:
         with Container(id="spot-box"):
             yield Static("Self-Spot", id="spot-title")
+            if self._offline:
+                yield Static("  Self-spotting unavailable in offline mode.", id="spot-offline-note")
             with Horizontal(classes="spot-row"):
                 yield Label("Frequency:", classes="spot-label")
-                yield Input(value=f"{self._freq_khz:.1f}", id="s-freq", classes="spot-input")
+                yield Input(value=f"{self._freq_khz:.1f}", id="s-freq", classes="spot-input", disabled=self._offline)
             with Horizontal(classes="spot-row"):
                 yield Label("Mode:", classes="spot-label")
-                yield Input(value=self._mode, id="s-mode", classes="spot-input")
+                yield Input(value=self._mode, id="s-mode", classes="spot-input", disabled=self._offline)
             with Horizontal(classes="spot-row"):
                 yield Label("Park Ref:", classes="spot-label")
-                yield Input(value=self._park_ref, id="s-park", classes="spot-input")
+                yield Input(value=self._park_ref, id="s-park", classes="spot-input", disabled=self._offline)
             with Horizontal(classes="spot-row"):
                 yield Label("Activator:", classes="spot-label")
-                yield Input(value=self._callsign, id="s-activator", classes="spot-input")
+                yield Input(value=self._callsign, id="s-activator", classes="spot-input", disabled=self._offline)
             with Horizontal(classes="spot-row"):
                 yield Label("Comments:", classes="spot-label")
                 yield Input(
                     placeholder="CQ POTA 20m SSB",
                     id="s-comments",
                     classes="spot-input",
+                    disabled=self._offline,
                 )
             with Horizontal(id="spot-btns"):
-                yield Button("Post Spot", variant="primary", id="s-post")
+                yield Button("Post Spot", variant="primary", id="s-post", disabled=self._offline)
                 yield Button("Cancel", id="s-cancel")
 
     @on(Button.Pressed, "#s-post")
