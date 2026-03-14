@@ -60,6 +60,7 @@ _SECTION_MAP: dict[tuple[str, str], str] = {
     ("voice_keyer", "vk4"): "vk4",
     ("voice_keyer", "vk5"): "vk5",
     ("pota", "api_base"): "pota_api_base",
+    ("pota", "p2p_prefix"): "p2p_prefix",
     ("app", "theme"): "theme",
 }
 
@@ -77,6 +78,7 @@ class Config:
     flrig_host: str = "localhost"
     flrig_port: int = 12345
     pota_api_base: str = "https://api.pota.app"
+    p2p_prefix: str = "US-"  # Default country prefix for the P2P field (e.g. "GB-" for UK ops)
     theme: str = "nord"
     qrz_username: str = ""
     qrz_password: str = ""
@@ -181,6 +183,9 @@ vk5 = {q(cfg.vk5)}
 
 api_base = {q(cfg.pota_api_base)}
 
+# Default country prefix pre-filled in the P2P park field (e.g. "US-", "GB-", "VK-").
+p2p_prefix = {q(cfg.p2p_prefix)}
+
 
 # ── App ─────────────────────────────────────────────────────
 [app]
@@ -254,6 +259,7 @@ def load_config() -> Config:
         "qrz_password",
         "qrz_api_url",
         "pota_api_base",
+        "p2p_prefix",
         "vk1",
         "vk2",
         "vk3",

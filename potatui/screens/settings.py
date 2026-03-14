@@ -130,6 +130,11 @@ class SettingsScreen(Screen):
                         classes="field-input",
                     )
 
+                with Horizontal(classes="field-row"):
+                    yield Label("P2P Prefix:", classes="field-label")
+                    yield Input(value=self.config.p2p_prefix, placeholder="US-", id="s-p2p-prefix", classes="field-input")
+                yield Static("Default country prefix pre-filled in the P2P park field (e.g. GB-, VK-, DL-).", classes="field-hint")
+
                 # ── Log Files ───────────────────────────────────────────
                 yield Static("Log Files", classes="section-heading")
                 yield Static("─" * 60, classes="section-rule")
@@ -207,6 +212,9 @@ class SettingsScreen(Screen):
         callsign = val("s-callsign").upper()
         dist_sel = self.query_one("#s-distance-unit", Select)
         distance_unit = str(dist_sel.value) if dist_sel.value != Select.BLANK else "mi"
+        p2p_prefix = val("s-p2p-prefix").upper() or "US-"
+        if not p2p_prefix.endswith("-"):
+            p2p_prefix += "-"
         log_dir = val("s-log-dir") or "~/potatui-logs"
         rig = val("s-rig")
         antenna = val("s-antenna")
@@ -229,6 +237,7 @@ class SettingsScreen(Screen):
             callsign=callsign,
             grid=self.config.grid,  # preserved from existing config, no longer editable in UI
             distance_unit=distance_unit,
+            p2p_prefix=p2p_prefix,
             log_dir=log_dir,
             rig=rig,
             antenna=antenna,

@@ -95,6 +95,7 @@ class LoggerScreen(Screen):
         self._last_spot_data: tuple[datetime, str, str] | None = None  # (utc_time, spotter, comments)
         self._qrz_filled_name: bool = False   # True if #f-name was auto-filled by QRZ
         self._qrz_filled_state: bool = False  # True if #f-state was auto-filled by QRZ
+        self._p2p_last_value: str = ""        # Previous P2P field value for auto-fill guard
         self._qrz_bars: dict[str, Static] = {}  # callsign → QRZ info bar widget
         self._celebrated_100: bool = False  # fire rainbow only once per session
         self._table_focused: bool = False  # True when QSO table has focus
@@ -153,7 +154,7 @@ class LoggerScreen(Screen):
                     yield Input(value=_rst_default(self.mode), id="f-rst-rcvd", max_length=3, select_on_focus=False)
                 with Vertical(classes="form-field", id="p2p-field"):
                     yield Label("P2P Park", classes="form-label")
-                    yield Input(value="US-", id="f-p2p", select_on_focus=False)
+                    yield Input(value=self.config.p2p_prefix, id="f-p2p", select_on_focus=False)
                 with Vertical(classes="form-field", id="freq-field"):
                     yield Label("Freq (kHz)", classes="form-label")
                     yield Input(value=f"{self.freq_khz:.1f}", id="f-freq", max_length=10)
@@ -604,7 +605,7 @@ class LoggerScreen(Screen):
         self.query_one("#f-name", Input).value = ""
         self.query_one("#f-state", Input).value = ""
         self.query_one("#f-notes", Input).value = ""
-        self.query_one("#f-p2p", Input).value = "US-"
+        self.query_one("#f-p2p", Input).value = self.config.p2p_prefix
         self.query_one("#dup-warning", Static).update("")
         self._qrz_filled_name = False
         self._qrz_filled_state = False
@@ -722,7 +723,7 @@ class LoggerScreen(Screen):
 
             p2p_val = self.query_one("#f-p2p", Input).value.strip().upper()
             state_inp = self.query_one("#f-state", Input)
-            if (not state_inp.value.strip() or self._qrz_filled_state) and p2p_val in ("", "US-") and info.state:
+            if (not state_inp.value.strip() or self._qrz_filled_state) and p2p_val in ("", self.config.p2p_prefix) and info.state:
                 state_inp.value = info.state
                 self._qrz_filled_state = True
 
@@ -794,8 +795,22 @@ class LoggerScreen(Screen):
 
     @on(Input.Changed, "#f-p2p")
     def on_p2p_changed(self, event: Input.Changed) -> None:
+        # Auto-fill country prefix after a comma (e.g. "US-1234," → "US-1234,US-")
+        # Only trigger when the user typed a comma (value grew), not when deleting back to one.
+        if event.value.endswith(",") and len(event.value) > len(self._p2p_last_value):
+            segments = event.value[:-1].split(",")
+            last_ref = segments[-1].strip().upper() if segments else ""
+            if last_ref and "-" in last_ref:
+                prefix = last_ref.split("-")[0] + "-"
+                inp = self.query_one("#f-p2p", Input)
+                self._p2p_last_value = event.value + prefix
+                inp.value = event.value + prefix
+                inp.cursor_position = len(inp.value)
+                return
+
+        self._p2p_last_value = event.value
         raw = event.value.strip().upper()
-        if not raw or raw == "US-":
+        if not raw or raw == self.config.p2p_prefix.upper():
             self._clear_p2p_info()
             return
         from potatui.pota_api import is_valid_park_ref
