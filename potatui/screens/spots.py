@@ -59,6 +59,7 @@ def _spot_age_minutes(spot_time_str: str) -> int:
 
 class SpotsScreen(Screen):
     BINDINGS = [
+        Binding("f", "toggle_filters", "Filters"),
         Binding("ctrl+f", "toggle_search", "Search"),
         Binding("r", "refresh", "Refresh"),
         Binding("escape", "go_back", "Back"),
@@ -109,6 +110,11 @@ class SpotsScreen(Screen):
         background: $surface-darken-1;
         border-bottom: solid $primary-darken-2;
         layout: horizontal;
+        display: none;
+    }
+
+    #filter-bar.visible {
+        display: block;
     }
 
     .filter-label {
@@ -232,11 +238,21 @@ class SpotsScreen(Screen):
         )
         if SpotsScreen._saved_search:
             self.query_one("#search-bar").add_class("visible")
+        table.focus()
         self._do_refresh()
         self.set_interval(60.0, self._do_refresh)
 
     def action_refresh(self) -> None:
         self._do_refresh()
+
+    def action_toggle_filters(self) -> None:
+        bar = self.query_one("#filter-bar")
+        if "visible" in bar.classes:
+            bar.remove_class("visible")
+            self.query_one("#spots-table", DataTable).focus()
+        else:
+            bar.add_class("visible")
+            self.query_one("#band-filter", Select).focus()
 
     def action_toggle_search(self) -> None:
         bar = self.query_one("#search-bar")
@@ -255,9 +271,14 @@ class SpotsScreen(Screen):
         self._apply_filters()
 
     def action_go_back(self) -> None:
-        bar = self.query_one("#search-bar")
-        if "visible" in bar.classes:
+        search_bar = self.query_one("#search-bar")
+        if "visible" in search_bar.classes:
             self._close_search()
+            return
+        filter_bar = self.query_one("#filter-bar")
+        if "visible" in filter_bar.classes:
+            filter_bar.remove_class("visible")
+            self.query_one("#spots-table", DataTable).focus()
             return
         self.app.pop_screen()
 
