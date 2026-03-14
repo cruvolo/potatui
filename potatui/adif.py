@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from potatui import __version__
 from potatui.session import QSO, Session
@@ -108,7 +107,7 @@ def _adif_header() -> str:
     )
 
 
-def write_adif(session: Session, path: Path, park_ref: Optional[str] = None) -> None:
+def write_adif(session: Session, path: Path, park_ref: str | None = None) -> None:
     """Write the complete ADIF file for the session (overwrites).
 
     park_ref overrides session.active_park_ref in MY_SIG_INFO, allowing one
@@ -133,7 +132,7 @@ def append_qso_adif(qso: QSO, operator: str, station_callsign: str, park_ref: st
         f.write(_qso_to_adif(qso, operator, station_callsign, park_ref, my_state))
 
 
-def session_file_stem(session: Session, park_ref: Optional[str] = None) -> str:
+def session_file_stem(session: Session, park_ref: str | None = None) -> str:
     """Return the base filename stem for session files."""
     date = session.start_time.strftime("%Y%m%d")
     call = session.station_callsign.upper().replace("/", "-")

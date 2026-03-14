@@ -8,8 +8,7 @@ from __future__ import annotations
 import socket
 import sys
 
-from textual.app import App, ComposeResult
-from textual.widgets import Footer, Header
+from textual.app import App
 
 from potatui.config import load_config, save_config
 
@@ -80,7 +79,7 @@ class PotaLogApp(App):
         else:
             self._continue_to_start()
 
-    def _after_park_db(self, downloaded: bool) -> None:
+    def _after_park_db(self, downloaded: bool | None) -> None:
         """Called after the park DB modal is dismissed."""
         if downloaded:
             from potatui.park_db import park_db

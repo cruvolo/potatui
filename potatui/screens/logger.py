@@ -6,14 +6,12 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
-from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import (
     Button,
@@ -28,21 +26,18 @@ from textual.widgets._input import Selection
 from potatui.adif import append_qso_adif, freq_to_band, session_file_stem, write_adif
 from potatui.config import Config
 from potatui.flrig import FlrigClient
-from potatui.session import QSO, Session
 from potatui.screens.logger_modals import (
-    MODES,
-    DEFAULT_RST,
-    _rst_default,
-    ModePickerModal,
-    EditQSOModal,
-    SessionSummaryModal,
+    ChangeOperatorModal,
     ConfirmModal,
+    EditQSOModal,
+    ModePickerModal,
     QrzLogModal,
     SelfSpotModal,
+    SessionSummaryModal,
     SetFreqModal,
-    ChangeOperatorModal,
+    _rst_default,
 )
-
+from potatui.session import QSO, Session
 
 # ---------------------------------------------------------------------------
 # Main Logger Screen
@@ -104,14 +99,12 @@ class LoggerScreen(Screen):
         self._json_path = self._make_json_path()
 
     def _make_log_paths(self):
-        from pathlib import Path
         return [
             self.config.log_dir_path / f"{session_file_stem(self.session, ref)}.adi"
             for ref in self.session.park_refs
         ]
 
     def _make_json_path(self):
-        from pathlib import Path
         stem = session_file_stem(self.session)
         return self.config.log_dir_path / f"{stem}.json"
 
@@ -339,10 +332,10 @@ class LoggerScreen(Screen):
             try:
                 dt = datetime.fromisoformat(s.spot_time.replace("Z", "+00:00"))
                 if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
+                    dt = dt.replace(tzinfo=UTC)
                 return dt
             except Exception:
-                return datetime.min.replace(tzinfo=timezone.utc)
+                return datetime.min.replace(tzinfo=UTC)
 
         latest = max(my_spots, key=_parse_spot_time)
         spot_dt = _parse_spot_time(latest)
@@ -358,7 +351,7 @@ class LoggerScreen(Screen):
             bar.set_classes("hidden")
             return
         spot_dt, spotter, comments = self._last_spot_data
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         age_min = int((now - spot_dt).total_seconds() / 60)
         if age_min < 60:
             age_str = f"{age_min}m ago"
@@ -479,6 +472,7 @@ class LoggerScreen(Screen):
 
         if event.widget.id not in ("f-rst-sent", "f-rst-rcvd"):
             return
+        assert isinstance(event.widget, Input)
         inp = event.widget
         val = inp.value
         if len(val) > 1:
@@ -587,7 +581,7 @@ class LoggerScreen(Screen):
         self._rebuild_table()
 
         # Persist — append each new QSO to every park's ADIF file
-        for park_ref, log_path in zip(self.session.park_refs, self._log_paths):
+        for park_ref, log_path in zip(self.session.park_refs, self._log_paths, strict=False):
             for qso in new_qsos:
                 try:
                     append_qso_adif(qso, self.session.operator, self.session.station_callsign, park_ref, log_path, self.session.my_state)
@@ -659,7 +653,7 @@ class LoggerScreen(Screen):
 
     def format_dist_bearing(self, dist_km, brg) -> str:
         """Format distance and bearing into a human readable string"""
-        from potatui.qrz import ( cardinal )
+        from potatui.qrz import cardinal
         if dist_km is None or brg is None:
             return ""
         direction = cardinal(brg)
@@ -690,8 +684,10 @@ class LoggerScreen(Screen):
         bar = self._qrz_bars[callsign]
 
         from potatui.qrz import (
-            bearing_deg, distance_from_grid,
-            grid_to_latlon, haversine_km,
+            bearing_deg,
+            distance_from_grid,
+            grid_to_latlon,
+            haversine_km,
         )
 
         if not self._qrz.configured:
@@ -831,7 +827,7 @@ class LoggerScreen(Screen):
     @work(exclusive=True, group="p2p-lookup")
     async def _lookup_p2p_park(self, refs: list[str], raw: str) -> None:
         from potatui.pota_api import lookup_park
-        from potatui.qrz import (bearing_deg, haversine_km)
+        from potatui.qrz import bearing_deg, haversine_km
         self._set_p2p_info(f"  P2P: {', '.join(refs)} — looking up…", warn=False)
 
         results = [(ref, await lookup_park(ref, self.config.pota_api_base)) for ref in refs]
@@ -967,7 +963,7 @@ class LoggerScreen(Screen):
         self.app.push_screen(ChangeOperatorModal(self.session.operator), on_result)
 
     def action_mode_picker(self) -> None:
-        def on_result(mode: Optional[str]) -> None:
+        def on_result(mode: str | None) -> None:
             if mode:
                 self.mode = mode
                 self._update_radio_display()
@@ -980,11 +976,12 @@ class LoggerScreen(Screen):
 
         self.app.push_screen(ModePickerModal(self.mode), on_result)
 
-    def _qso_id_from_table_cursor(self) -> Optional[int]:
+    def _qso_id_from_table_cursor(self) -> int | None:
         """Return the QSO id of the currently highlighted table row, or None."""
         table = self.query_one("#qso-table", DataTable)
         try:
             row_key = list(table.rows)[table.cursor_row]
+            assert row_key.value is not None
             return int(row_key.value)
         except Exception:
             return None
@@ -994,13 +991,13 @@ class LoggerScreen(Screen):
         if qso is None:
             return
 
-        def on_result(data: Optional[dict]) -> None:
+        def on_result(data: dict | None) -> None:
             if data:
                 self.session.update_qso(qso_id, **data)
                 self._rebuild_table()
                 self._save_session()
                 try:
-                    for park_ref, log_path in zip(self.session.park_refs, self._log_paths):
+                    for park_ref, log_path in zip(self.session.park_refs, self._log_paths, strict=False):
                         write_adif(self.session, log_path, park_ref)
                 except Exception as e:
                     self.notify(f"ADIF rewrite error: {e}", severity="error")
@@ -1050,7 +1047,7 @@ class LoggerScreen(Screen):
             self._rebuild_table()
             self._save_session()
             try:
-                for park_ref, log_path in zip(self.session.park_refs, self._log_paths):
+                for park_ref, log_path in zip(self.session.park_refs, self._log_paths, strict=False):
                     write_adif(self.session, log_path, park_ref)
             except Exception as e:
                 self.notify(f"ADIF rewrite error: {e}", severity="error")
@@ -1127,10 +1124,10 @@ class LoggerScreen(Screen):
         self.app.push_screen(SettingsScreen(self.config))
 
     def action_end_session(self) -> None:
-        def on_confirm(confirmed: bool) -> None:
+        def on_confirm(confirmed: bool | None) -> None:
             if confirmed:
                 try:
-                    for park_ref, log_path in zip(self.session.park_refs, self._log_paths):
+                    for park_ref, log_path in zip(self.session.park_refs, self._log_paths, strict=False):
                         write_adif(self.session, log_path, park_ref)
                     self._save_session()
                     if len(self._log_paths) == 1:
@@ -1154,18 +1151,19 @@ class LoggerScreen(Screen):
         # Row keys are set to str(qso.qso_id) — retrieve by cursor index
         try:
             row_key = list(table.rows)[cursor_index]
+            assert row_key.value is not None
             qso_id = int(row_key.value)
         except Exception:
             return
 
-        def on_confirm(confirmed: bool) -> None:
+        def on_confirm(confirmed: bool | None) -> None:
             if confirmed:
                 self.session.remove_qso(qso_id)
                 self._rebuild_table()
                 self._update_qso_count()
                 self._save_session()
                 try:
-                    for park_ref, log_path in zip(self.session.park_refs, self._log_paths):
+                    for park_ref, log_path in zip(self.session.park_refs, self._log_paths, strict=False):
                         write_adif(self.session, log_path, park_ref)
                 except Exception as e:
                     self.notify(f"ADIF rewrite error: {e}", severity="error")
@@ -1195,7 +1193,7 @@ class LoggerScreen(Screen):
         self._rebuild_table()
         self._save_session()
         try:
-            for park_ref, log_path in zip(self.session.park_refs, self._log_paths):
+            for park_ref, log_path in zip(self.session.park_refs, self._log_paths, strict=False):
                 write_adif(self.session, log_path, park_ref)
         except Exception as e:
             self.notify(f"ADIF rewrite error: {e}", severity="error")

@@ -8,7 +8,7 @@ from __future__ import annotations
 import csv
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import httpx
 from platformdirs import user_data_dir
@@ -26,11 +26,11 @@ class ParkDb:
     """In-memory park database loaded from the cached CSV file."""
 
     def __init__(self) -> None:
-        self._parks: dict[str, "ParkInfo"] = {}
+        self._parks: dict[str, ParkInfo] = {}
 
     def load(self) -> None:
         """Load parks from the CSV into memory. Safe to call multiple times."""
-        from potatui.pota_api import ParkInfo, _US_STATE_ABBREV
+        from potatui.pota_api import ParkInfo
 
         if not PARKS_CSV.exists():
             return
@@ -79,16 +79,16 @@ class ParkDb:
 
         self._parks = parks
 
-    def lookup(self, ref: str) -> Optional["ParkInfo"]:
+    def lookup(self, ref: str) -> ParkInfo | None:
         """Return ParkInfo for a reference, or None if not found."""
         return self._parks.get(ref.strip().upper())
 
-    def search_parks(self, query: str, limit: int = 15) -> list["ParkInfo"]:
+    def search_parks(self, query: str, limit: int = 15) -> list[ParkInfo]:
         """Search by name substring or ref prefix (case-insensitive). Runs synchronously."""
         if not self._parks or not query:
             return []
         q = query.strip().lower()
-        results: list["ParkInfo"] = []
+        results: list[ParkInfo] = []
         for park in self._parks.values():
             if q in park.name.lower() or park.reference.lower().startswith(q):
                 results.append(park)

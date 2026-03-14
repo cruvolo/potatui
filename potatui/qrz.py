@@ -8,7 +8,6 @@ from __future__ import annotations
 import math
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import Optional
 
 import httpx
 
@@ -27,8 +26,8 @@ class QRZInfo:
     state: str      # USA state
     country: str
     grid: str
-    lat: Optional[float]
-    lon: Optional[float]
+    lat: float | None
+    lon: float | None
 
     @property
     def location(self) -> str:
@@ -47,10 +46,10 @@ class QRZClient:
         self._username = username.strip()
         self._password = password.strip()
         self._api_url = api_url.strip() or _QRZ_URL
-        self._session_key: Optional[str] = None
-        self._cache: dict[str, Optional[QRZInfo]] = {}
+        self._session_key: str | None = None
+        self._cache: dict[str, QRZInfo | None] = {}
         self._error_log: list[str] = []
-        self._last_ok: Optional[bool] = None  # None = not yet tested
+        self._last_ok: bool | None = None  # None = not yet tested
 
     @property
     def configured(self) -> bool:
@@ -85,7 +84,7 @@ class QRZClient:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _find(self, el: ET.Element, tag: str) -> Optional[ET.Element]:
+    def _find(self, el: ET.Element, tag: str) -> ET.Element | None:
         """Find child element, trying with and without the QRZ namespace."""
         result = el.find(f"{{{_QRZ_NS}}}{tag}")
         if result is None:
@@ -96,7 +95,7 @@ class QRZClient:
         child = self._find(el, tag)
         return child.text.strip() if child is not None and child.text else ""
 
-    def _parse_session_key(self, root: ET.Element) -> Optional[str]:
+    def _parse_session_key(self, root: ET.Element) -> str | None:
         session = self._find(root, "Session")
         if session is None:
             return None
@@ -142,7 +141,7 @@ class QRZClient:
     # Lookup
     # ------------------------------------------------------------------
 
-    async def lookup(self, callsign: str) -> Optional[QRZInfo]:
+    async def lookup(self, callsign: str) -> QRZInfo | None:
         """Look up a callsign. Returns None if not configured, not found, or on error."""
         if not self.configured:
             return None
@@ -167,7 +166,7 @@ class QRZClient:
         self._cache[callsign] = info
         return info
 
-    async def _do_lookup(self, callsign: str) -> Optional[QRZInfo]:
+    async def _do_lookup(self, callsign: str) -> QRZInfo | None:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 r = await client.get(
@@ -236,15 +235,15 @@ def grid_to_latlon(grid: str) -> tuple[float, float]:
     g = grid.upper()
     if len(g) < 4:
         raise ValueError(f"Grid too short: {grid}")
-    lon = (ord(g[0]) - ord("A")) * 20 - 180 + int(g[2]) * 2
-    lat = (ord(g[1]) - ord("A")) * 10 - 90 + int(g[3]) * 1
+    lon: float = (ord(g[0]) - ord("A")) * 20 - 180 + int(g[2]) * 2
+    lat: float = (ord(g[1]) - ord("A")) * 10 - 90 + int(g[3]) * 1
     if len(g) >= 6:
         lon += (ord(g[4].lower()) - ord("a")) * (2.0 / 24) + (1.0 / 24)
         lat += (ord(g[5].lower()) - ord("a")) * (1.0 / 24) + (1.0 / 48)
     else:
         # move to center of grid
-        lon += 1.0;
-        lat += 0.5;
+        lon += 1.0
+        lat += 0.5
     return lat, lon
 
 
@@ -276,7 +275,7 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return r * 2 * math.asin(math.sqrt(a))
 
 
-def distance_from_grid(my_grid: str, info: QRZInfo) -> Optional[float]:
+def distance_from_grid(my_grid: str, info: QRZInfo) -> float | None:
     """Return distance in km from my_grid to the QRZ location, or None if not computable."""
     if not my_grid or len(my_grid) < 4:
         return None

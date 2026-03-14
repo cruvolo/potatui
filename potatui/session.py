@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Optional
 
 
 @dataclass
@@ -34,7 +33,7 @@ class QSO:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> "QSO":
+    def from_dict(cls, d: dict) -> QSO:
         d = dict(d)
         d["timestamp_utc"] = datetime.fromisoformat(d["timestamp_utc"])
         d.setdefault("state", "")
@@ -103,7 +102,7 @@ class Session:
         self.qsos = [q for q in self.qsos if q.qso_id != qso_id]
         return len(self.qsos) < before
 
-    def update_qso(self, qso_id: int, **kwargs) -> Optional[QSO]:
+    def update_qso(self, qso_id: int, **kwargs) -> QSO | None:
         for i, q in enumerate(self.qsos):
             if q.qso_id == qso_id:
                 for k, v in kwargs.items():
@@ -137,7 +136,7 @@ class Session:
             json.dump(self.to_dict(), f, indent=2)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Session":
+    def from_dict(cls, d: dict) -> Session:
         d = dict(d)
         d["start_time"] = datetime.fromisoformat(d["start_time"])
         d["qsos"] = [QSO.from_dict(q) for q in d.get("qsos", [])]
@@ -146,6 +145,6 @@ class Session:
         return cls(**d)
 
     @classmethod
-    def load_json(cls, path: str) -> "Session":
+    def load_json(cls, path: str) -> Session:
         with open(path, encoding="utf-8") as f:
             return cls.from_dict(json.load(f))

@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Optional
 
 from textual import on, work
 from textual.app import ComposeResult
@@ -40,7 +39,7 @@ def _rst_default(mode: str) -> str:
 # Mode picker modal
 # ---------------------------------------------------------------------------
 
-class ModePickerModal(ModalScreen[Optional[str]]):
+class ModePickerModal(ModalScreen[str | None]):
     CSS = """
     ModePickerModal {
         align: center middle;
@@ -99,7 +98,7 @@ class ModePickerModal(ModalScreen[Optional[str]]):
 # Edit QSO modal
 # ---------------------------------------------------------------------------
 
-class EditQSOModal(ModalScreen[Optional[dict]]):
+class EditQSOModal(ModalScreen[dict | None]):
     CSS = """
     EditQSOModal {
         align: center middle;
@@ -321,6 +320,7 @@ class SessionSummaryModal(ModalScreen[bool]):
 
     def compose(self) -> ComposeResult:
         from collections import Counter
+
         from potatui.adif import BAND_RANGES
 
         session = self._session

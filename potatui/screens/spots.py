@@ -5,8 +5,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from rich.text import Text
 from textual import on, work
@@ -24,7 +23,6 @@ from textual.widgets import (
     Static,
 )
 
-from potatui.adif import freq_to_band
 from potatui.config import Config
 from potatui.flrig import FlrigClient
 from potatui.pota_api import Spot, fetch_spots
@@ -45,8 +43,8 @@ def _spot_age_minutes(spot_time_str: str) -> int:
         for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%SZ"):
             try:
                 t = datetime.strptime(spot_time_str, fmt)
-                t = t.replace(tzinfo=timezone.utc)
-                delta = datetime.now(timezone.utc) - t
+                t = t.replace(tzinfo=UTC)
+                delta = datetime.now(UTC) - t
                 return max(0, int(delta.total_seconds() / 60))
             except ValueError:
                 continue
@@ -285,6 +283,7 @@ class SpotsScreen(Screen):
         API (grid6) for any refs not found locally.
         """
         import asyncio
+
         from potatui.pota_api import lookup_park
 
         refs = list({s.reference for s in spots if s.reference})

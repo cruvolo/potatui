@@ -6,16 +6,16 @@
 from __future__ import annotations
 
 import xmlrpc.client
-from typing import Optional
+
 
 class _TimeoutTransport(xmlrpc.client.Transport):
     """Transport with a configurable socket timeout (important on Windows)."""
 
     def __init__(self, timeout: float = 1.0, **kwargs: object) -> None:
-        super().__init__(**kwargs)
+        super().__init__(**kwargs)  # type: ignore[arg-type]
         self._timeout = timeout
 
-    def make_connection(self, host: str) -> xmlrpc.client.http.client.HTTPConnection:  # type: ignore[override]
+    def make_connection(self, host: str) -> xmlrpc.client.http.client.HTTPConnection:  # type: ignore[override, name-defined]
         conn = super().make_connection(host)
         conn.timeout = self._timeout
         return conn
@@ -45,7 +45,7 @@ MODE_MAP: dict[str, str] = {
 class FlrigClient:
     def __init__(self, host: str = "localhost", port: int = 12345) -> None:
         self._url = f"http://{host}:{port}"
-        self._proxy: Optional[xmlrpc.client.ServerProxy] = None
+        self._proxy: xmlrpc.client.ServerProxy | None = None
 
     def _get_proxy(self) -> xmlrpc.client.ServerProxy:
         if self._proxy is None:
@@ -58,21 +58,21 @@ class FlrigClient:
         """Clear cached proxy so it's recreated on next call."""
         self._proxy = None
 
-    def get_frequency(self) -> Optional[float]:
+    def get_frequency(self) -> float | None:
         """Return current VFO frequency in kHz, or None if offline."""
         try:
             proxy = self._get_proxy()
-            hz = proxy.rig.get_vfo()  # type: ignore[union-attr]
-            return float(hz) / 1000.0
+            hz = proxy.rig.get_vfo()
+            return float(hz) / 1000.0  # type: ignore[arg-type]
         except Exception:
             self._reset()
             return None
 
-    def get_mode(self) -> Optional[str]:
+    def get_mode(self) -> str | None:
         """Return current mode as our canonical string, or None if offline."""
         try:
             proxy = self._get_proxy()
-            raw = proxy.rig.get_mode()  # type: ignore[union-attr]
+            raw = proxy.rig.get_mode()
             return MODE_MAP.get(str(raw).upper(), str(raw))
         except Exception:
             self._reset()
@@ -82,13 +82,13 @@ class FlrigClient:
         """Set VFO frequency in Hz. Returns True on success."""
         try:
             proxy = self._get_proxy()
-            proxy.rig.set_vfo(freq_hz)  # type: ignore[union-attr]
+            proxy.rig.set_vfo(freq_hz)
             return True
         except Exception:
             self._reset()
             return False
 
-    def set_mode(self, mode: str, freq_khz: Optional[float] = None) -> bool:
+    def set_mode(self, mode: str, freq_khz: float | None = None) -> bool:
         """Set mode by canonical name. Returns True on success.
 
         freq_khz is used to pick USB vs LSB for SSB: >=10 MHz → USB, <10 MHz → LSB.
@@ -96,7 +96,7 @@ class FlrigClient:
         flrig_mode = _canonical_to_flrig(mode, freq_khz)
         try:
             proxy = self._get_proxy()
-            proxy.rig.set_mode(flrig_mode)  # type: ignore[union-attr]
+            proxy.rig.set_mode(flrig_mode)
             return True
         except Exception:
             self._reset()
@@ -111,7 +111,7 @@ class FlrigClient:
         """
         try:
             proxy = self._get_proxy()
-            proxy.rig.cat_string(cmd)  # type: ignore[union-attr]
+            proxy.rig.cat_string(cmd)
             return True
         except xmlrpc.client.Fault:
             # Rig is reachable but rejected the command — don't drop the connection
@@ -125,7 +125,7 @@ class FlrigClient:
         return self.get_frequency() is not None
 
 
-def _canonical_to_flrig(mode: str, freq_khz: Optional[float] = None) -> str:
+def _canonical_to_flrig(mode: str, freq_khz: float | None = None) -> str:
     """Best-effort map from canonical mode name back to flrig mode string.
 
     For SSB, picks USB (>=10 MHz) or LSB (<10 MHz) based on freq_khz.

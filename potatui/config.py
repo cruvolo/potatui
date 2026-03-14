@@ -7,17 +7,13 @@ from __future__ import annotations
 
 import os
 import sys
+import tomllib
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 
 from dotenv import load_dotenv
 from platformdirs import user_config_dir
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib  # type: ignore[no-reuse-imports]
 
 CONFIG_DIR = Path(user_config_dir("potatui", appauthor=False))
 CONFIG_PATH = CONFIG_DIR / "config.toml"

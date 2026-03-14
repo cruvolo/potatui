@@ -23,7 +23,7 @@ from textual.widgets import (
 from textual.widgets.option_list import Option as OptionListOption
 
 from potatui.config import Config
-from potatui.pota_api import is_valid_park_ref, lookup_park
+from potatui.pota_api import ParkInfo, is_valid_park_ref, lookup_park
 from potatui.session import Session
 
 
@@ -116,7 +116,7 @@ class SetupScreen(Screen):
         self.config = config
         self._dismissable = dismissable
         self._park_names: dict[str, str] = {}       # ref → name
-        self._park_infos: dict[str, object] = {}    # ref → ParkInfo (for multi-state detection)
+        self._park_infos: dict[str, ParkInfo | None] = {}  # ref → ParkInfo (for multi-state detection)
         self._user_edited_grid: bool = False         # True once user types in grid field
         self._auto_fill_pending: int = 0             # counts in-flight programmatic grid fills
 
@@ -249,13 +249,12 @@ class SetupScreen(Screen):
         if not self._user_edited_grid and refs:
             first_info = self._park_infos.get(refs[0])
             self._auto_fill_pending += 1
-            self.query_one("#grid_sq", Input).value = (
-                first_info.grid if first_info and getattr(first_info, "grid", "") else ""
-            )
+            self.query_one("#grid_sq", Input).value = first_info.grid if first_info else ""
 
     @work(exclusive=True)
     async def _search_parks(self, query: str) -> None:
         import asyncio
+
         from potatui.park_db import park_db
         results = await asyncio.to_thread(park_db.search_parks, query, 15)
         suggestions = self.query_one("#park-suggestions", OptionList)

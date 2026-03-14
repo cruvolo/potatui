@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -22,8 +22,8 @@ class ParkInfo:
     state: str = ""                          # primary 2-letter abbreviation
     grid: str = ""
     locations: list[str] = field(default_factory=list)  # all abbrevs (multi-state parks)
-    lat: Optional[float] = None
-    lon: Optional[float] = None
+    lat: float | None = None
+    lon: float | None = None
 
 
 # US state name → 2-letter abbreviation
@@ -65,7 +65,7 @@ def is_valid_park_ref(ref: str) -> bool:
     return bool(PARK_REF_RE.match(ref.strip()))
 
 
-async def lookup_park(ref: str, base_url: str) -> Optional[ParkInfo]:
+async def lookup_park(ref: str, base_url: str) -> ParkInfo | None:
     """Look up a park — local DB first, POTA API on cache miss."""
     # Check local cache first (lazy import avoids circular dependency)
     from potatui.park_db import park_db
@@ -100,8 +100,8 @@ async def lookup_park(ref: str, base_url: str) -> Optional[ParkInfo]:
                 lat_s = data.get("latitude", data.get("lat", ""))
                 lon_s = data.get("longitude", data.get("lon", ""))
                 try:
-                    park_lat: Optional[float] = float(lat_s) if lat_s else None
-                    park_lon: Optional[float] = float(lon_s) if lon_s else None
+                    park_lat: float | None = float(lat_s) if lat_s else None
+                    park_lon: float | None = float(lon_s) if lon_s else None
                 except (ValueError, TypeError):
                     park_lat, park_lon = None, None
                 return ParkInfo(

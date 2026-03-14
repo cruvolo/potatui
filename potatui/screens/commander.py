@@ -118,7 +118,7 @@ class CommanderModal(ModalScreen[None]):
     }
     """
 
-    def __init__(self, cmd_config: CommandConfig, flrig: "FlrigClient") -> None:
+    def __init__(self, cmd_config: CommandConfig, flrig: FlrigClient) -> None:
         super().__init__()
         self._cmd_config = cmd_config
         self._flrig = flrig
