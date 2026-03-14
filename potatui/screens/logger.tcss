@@ -1,0 +1,215 @@
+LoggerScreen {
+    layout: vertical;
+}
+
+#header-bar {
+    height: 3;
+    background: $primary-darken-2;
+    padding: 0 1;
+    layout: horizontal;
+    align: left middle;
+}
+
+#header-bar:dark {
+    background: $primary-darken-3;
+    tint: $background 40%;
+}
+
+.hdr-item {
+    padding: 0 1;
+    color: $text;
+    width: auto;
+}
+
+.hdr-sep {
+    color: $text-muted;
+    padding: 0 0;
+    width: auto;
+}
+
+
+.hdr-offline {
+    color: $warning;
+}
+
+#hdr-net, #hdr-flrig, #hdr-qrz {
+    width: auto;
+    padding: 0 1;
+    color: $background;
+    text-style: bold;
+}
+
+#hdr-net.net-online, #hdr-flrig.flrig-online, #hdr-qrz.qrz-ok {
+    background: $success;
+}
+
+#hdr-net.net-offline, #hdr-flrig.flrig-offline, #hdr-qrz.qrz-error {
+    background: $error;
+}
+
+#hdr-net.net-unknown, #hdr-qrz.qrz-unconfigured {
+    background: $panel;
+    color: $text-muted;
+}
+
+#hdr-spacer {
+    width: 1fr;
+}
+
+#entry-form {
+    height: auto;
+    background: $surface-darken-1;
+    padding: 1 1 0 1;
+    layout: vertical;
+    border-bottom: solid $primary-darken-2;
+}
+
+#entry-row1, #entry-row2 {
+    height: auto;
+    layout: horizontal;
+    margin-bottom: 1;
+}
+
+.form-field {
+    layout: vertical;
+    margin-right: 1;
+    height: auto;
+}
+
+.form-label {
+    color: $text-muted;
+    height: 1;
+}
+
+#dup-warning {
+    color: $warning;
+    text-style: bold;
+    height: 1;
+}
+
+#freq-field {
+    width: 14;
+}
+
+#callsign-field {
+    width: 36;
+}
+
+#p2p-field {
+    width: 26;
+}
+
+#rst-sent-field {
+    width: 10;
+}
+
+#rst-rcvd-field {
+    width: 10;
+}
+
+#state-field {
+    width: 14;
+}
+
+#name-field {
+    width: 28;
+}
+
+#notes-field {
+    width: 1fr;
+}
+
+.qrz-info-bar {
+    height: 3;
+    background: $surface;
+    border: round $accent;
+    padding: 0 2;
+    color: $text;
+    text-style: bold;
+    content-align: left middle;
+}
+
+.qrz-info-bar.hidden {
+    display: none;
+}
+
+.qrz-info-bar.pending {
+    color: $text-muted;
+    text-style: italic;
+    border: round $accent-darken-2;
+}
+
+.qrz-info-bar.notfound {
+    color: $text-muted;
+    text-style: none;
+    border: round $surface-lighten-2;
+}
+
+#qrz-info-container {
+    height: auto;
+}
+
+#p2p-info-bar {
+    height: 3;
+    background: $surface;
+    border: round $accent;
+    padding: 0 2;
+    color: $text;
+    text-style: bold;
+    content-align: left middle;
+}
+
+#p2p-info-bar.hidden {
+    display: none;
+}
+
+#p2p-info-bar.warn {
+    color: $warning;
+    border: round $warning;
+}
+
+#btn-log {
+    min-width: 8;
+}
+
+#last-spotted-bar {
+    height: 1;
+    padding: 0 1;
+    color: $text-muted;
+    text-style: italic;
+}
+
+#last-spotted-bar.hidden {
+    display: none;
+}
+
+#last-spotted-bar.spot-recent {
+    color: $success;
+    text-style: bold;
+}
+
+#last-spotted-bar.spot-stale {
+    color: $warning;
+    text-style: none;
+}
+
+#last-spotted-bar.spot-old {
+    color: $text-muted;
+    text-style: italic;
+}
+
+#qso-table-container {
+    height: 1fr;
+}
+
+DataTable {
+    height: 1fr;
+}
+
+#qso-table-container.rainbow-0 { border: heavy red; }
+#qso-table-container.rainbow-1 { border: heavy darkorange; }
+#qso-table-container.rainbow-2 { border: heavy yellow; }
+#qso-table-container.rainbow-3 { border: heavy lime; }
+#qso-table-container.rainbow-4 { border: heavy deepskyblue; }
+#qso-table-container.rainbow-5 { border: heavy blue; }
+#qso-table-container.rainbow-6 { border: heavy magenta; }
