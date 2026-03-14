@@ -394,7 +394,7 @@ class LoggerScreen(Screen):
         )
 
         now_online = freq is not None
-        if now_online:
+        if freq is not None:
             self._flrig_online = True
             self.freq_khz = freq
             band = freq_to_band(freq)
