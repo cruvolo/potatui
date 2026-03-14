@@ -30,6 +30,7 @@ from potatui.screens.logger_modals import (
     ChangeOperatorModal,
     ConfirmModal,
     EditQSOModal,
+    FlrigStatusModal,
     ModePickerModal,
     QrzLogModal,
     SelfSpotModal,
@@ -82,6 +83,8 @@ class LoggerScreen(Screen):
         self.park_names = park_names
         self.flrig = FlrigClient(config.flrig_host, config.flrig_port)
         self._flrig_online = False
+        self._flrig_online_prev: bool | None = None  # tracks previous state for change detection
+        self._flrig_log: list[str] = []  # timestamped connection events
         from potatui.commands import CommandConfig, load_commands
         legacy_vk = [config.vk1, config.vk2, config.vk3, config.vk4, config.vk5]
         self._cmd_config: CommandConfig = load_commands(legacy_vk)
@@ -390,7 +393,8 @@ class LoggerScreen(Screen):
             lambda: (self.flrig.get_frequency(), self.flrig.get_mode())
         )
 
-        if freq is not None:
+        now_online = freq is not None
+        if now_online:
             self._flrig_online = True
             self.freq_khz = freq
             band = freq_to_band(freq)
@@ -403,8 +407,21 @@ class LoggerScreen(Screen):
             freq_inp = self.query_one("#f-freq", Input)
             if not freq_inp.has_focus:
                 freq_inp.value = f"{freq:.1f}"
-        else:
+        elif not self.flrig.cat_in_flight:
+            # Only mark offline if no CAT command is in flight — flrig's
+            # XML-RPC server blocks completely during voice playback, making
+            # legitimate poll calls time out even though flrig is healthy.
             self._flrig_online = False
+
+        # Log connection state transitions (ignore transient drops during CAT)
+        effective_online = now_online or self.flrig.cat_in_flight
+        if effective_online != self._flrig_online_prev:
+            ts = datetime.now().strftime("%H:%M:%S")
+            event = "Connected" if effective_online else "Disconnected"
+            self._flrig_log.append(f"{ts}  {event}")
+            if len(self._flrig_log) > 50:
+                self._flrig_log = self._flrig_log[-50:]
+            self._flrig_online_prev = effective_online
 
         self._update_radio_display()
 
@@ -414,6 +431,18 @@ class LoggerScreen(Screen):
             widget.set_classes(f"qrz-{self._qrz.status}")
         except Exception:
             pass
+
+    @on(events.Click, "#hdr-flrig")
+    def on_flrig_indicator_click(self) -> None:
+        self.app.push_screen(FlrigStatusModal(
+            url=self.flrig._url,
+            online=self._flrig_online,
+            freq_khz=self.freq_khz,
+            band=self.band,
+            mode=self.mode,
+            state_log=self._flrig_log,
+            detail_log=self.flrig.log,
+        ))
 
     @on(events.Click, "#hdr-qrz")
     def on_qrz_indicator_click(self) -> None:
@@ -1137,12 +1166,13 @@ class LoggerScreen(Screen):
             self.notify("Offline mode OFF — network features re-enabled")
             self._check_internet_connectivity()
 
+    @work(thread=True)
     def _fire_cat_slot(self, label: str, cmd: str) -> None:
         ok = self.flrig.send_cat_string(cmd)
         if ok:
-            self.notify(f"{label}  ({cmd})", severity="information")
+            self.app.call_from_thread(self.notify, f"{label}  ({cmd})", severity="information")
         else:
-            self.notify("flrig not connected", severity="error")
+            self.app.call_from_thread(self.notify, "flrig not connected", severity="error")
 
     @work(thread=True)
     def _fire_console_slot(self, label: str, cmd: str) -> None:

@@ -5,7 +5,10 @@
 
 from __future__ import annotations
 
+import threading
 import xmlrpc.client
+from datetime import datetime
+from pathlib import Path
 
 
 class _TimeoutTransport(xmlrpc.client.Transport):
@@ -41,13 +44,46 @@ MODE_MAP: dict[str, str] = {
     "DIGL": "FT8",
 }
 
+_LOG_MAX = 100
+_LOG_FILE = Path.home() / "potatui-flrig-debug.log"
+
 
 class FlrigClient:
     def __init__(self, host: str = "localhost", port: int = 12345) -> None:
         self._url = f"http://{host}:{port}"
+        # Two independent proxies: _proxy for polling (1s timeout),
+        # _cat_proxy for CAT/command sends (longer timeout).  Keeping them
+        # separate means a slow or timed-out CAT command never touches the
+        # proxy used by the poll loop, so the online indicator stays stable.
         self._proxy: xmlrpc.client.ServerProxy | None = None
+        self._cat_proxy: xmlrpc.client.ServerProxy | None = None
+        self._lock = threading.Lock()       # guards _proxy
+        self._cat_lock = threading.Lock()   # guards _cat_proxy
+        self.log: list[str] = []            # diagnostic log, newest appended last
+        self.cat_in_flight = False          # True while a CAT command is being sent
+
+    # ------------------------------------------------------------------
+    # Logging helper
+    # ------------------------------------------------------------------
+
+    def _append_log(self, msg: str) -> None:
+        ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]  # HH:MM:SS.mmm
+        entry = f"{ts}  {msg}"
+        self.log.append(entry)
+        if len(self.log) > _LOG_MAX:
+            self.log = self.log[-_LOG_MAX:]
+        try:
+            with _LOG_FILE.open("a") as fh:
+                fh.write(entry + "\n")
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Poll proxy (1 s timeout — used for get_frequency / get_mode / set_*)
+    # ------------------------------------------------------------------
 
     def _get_proxy(self) -> xmlrpc.client.ServerProxy:
+        """Must be called with self._lock held."""
         if self._proxy is None:
             self._proxy = xmlrpc.client.ServerProxy(
                 self._url, allow_none=True, transport=_TimeoutTransport(timeout=1.0)
@@ -55,38 +91,61 @@ class FlrigClient:
         return self._proxy
 
     def _reset(self) -> None:
-        """Clear cached proxy so it's recreated on next call."""
+        """Must be called with self._lock held."""
         self._proxy = None
+
+    # ------------------------------------------------------------------
+    # CAT proxy (5 s timeout — used for send_cat_string only)
+    # ------------------------------------------------------------------
+
+    def _get_cat_proxy(self) -> xmlrpc.client.ServerProxy:
+        """Must be called with self._cat_lock held."""
+        if self._cat_proxy is None:
+            self._cat_proxy = xmlrpc.client.ServerProxy(
+                self._url, allow_none=True, transport=_TimeoutTransport(timeout=5.0)
+            )
+        return self._cat_proxy
+
+    def _reset_cat(self) -> None:
+        """Must be called with self._cat_lock held."""
+        self._cat_proxy = None
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def get_frequency(self) -> float | None:
         """Return current VFO frequency in kHz, or None if offline."""
-        try:
-            proxy = self._get_proxy()
-            hz = proxy.rig.get_vfo()
-            return float(hz) / 1000.0  # type: ignore[arg-type]
-        except Exception:
-            self._reset()
-            return None
+        with self._lock:
+            try:
+                hz = self._get_proxy().rig.get_vfo()
+                return float(hz) / 1000.0  # type: ignore[arg-type]
+            except Exception as exc:
+                self._append_log(f"poll get_vfo FAIL  {type(exc).__name__}: {exc}")
+                self._reset()
+                return None
 
     def get_mode(self) -> str | None:
         """Return current mode as our canonical string, or None if offline."""
-        try:
-            proxy = self._get_proxy()
-            raw = proxy.rig.get_mode()
-            return MODE_MAP.get(str(raw).upper(), str(raw))
-        except Exception:
-            self._reset()
-            return None
+        with self._lock:
+            try:
+                raw = self._get_proxy().rig.get_mode()
+                return MODE_MAP.get(str(raw).upper(), str(raw))
+            except Exception as exc:
+                self._append_log(f"poll get_mode FAIL  {type(exc).__name__}: {exc}")
+                self._reset()
+                return None
 
     def set_frequency(self, freq_hz: float) -> bool:
         """Set VFO frequency in Hz. Returns True on success."""
-        try:
-            proxy = self._get_proxy()
-            proxy.rig.set_vfo(freq_hz)
-            return True
-        except Exception:
-            self._reset()
-            return False
+        with self._lock:
+            try:
+                self._get_proxy().rig.set_vfo(freq_hz)
+                return True
+            except Exception as exc:
+                self._append_log(f"set_vfo({freq_hz}) FAIL  {type(exc).__name__}: {exc}")
+                self._reset()
+                return False
 
     def set_mode(self, mode: str, freq_khz: float | None = None) -> bool:
         """Set mode by canonical name. Returns True on success.
@@ -94,31 +153,52 @@ class FlrigClient:
         freq_khz is used to pick USB vs LSB for SSB: >=10 MHz → USB, <10 MHz → LSB.
         """
         flrig_mode = _canonical_to_flrig(mode, freq_khz)
-        try:
-            proxy = self._get_proxy()
-            proxy.rig.set_mode(flrig_mode)
-            return True
-        except Exception:
-            self._reset()
-            return False
+        with self._lock:
+            try:
+                self._get_proxy().rig.set_mode(flrig_mode)
+                return True
+            except Exception as exc:
+                self._append_log(f"set_mode({flrig_mode}) FAIL  {type(exc).__name__}: {exc}")
+                self._reset()
+                return False
 
     def send_cat_string(self, cmd: str) -> bool:
         """Send a raw CAT command string via rig.cat_string. Returns True on success.
+
+        Uses a separate proxy with a longer timeout so a slow rig response
+        (e.g. while playing a voice message) does not disturb the poll proxy.
+
+        A TimeoutError is treated as success: flrig's XML-RPC server is
+        single-threaded and blocks while playing audio, so the command was
+        almost certainly delivered even though the response never came back.
 
         The command is forwarded as-is to the connected rig. Examples:
           Yaesu voice keyer: "PB01;" through "PB05;"
           Other rigs: whatever CAT command triggers the desired function.
         """
+        self._append_log(f"cat_string({cmd!r}) sending…")
+        self.cat_in_flight = True
         try:
-            proxy = self._get_proxy()
-            proxy.rig.cat_string(cmd)
-            return True
-        except xmlrpc.client.Fault:
-            # Rig is reachable but rejected the command — don't drop the connection
-            return False
-        except Exception:
-            self._reset()
-            return False
+            with self._cat_lock:
+                try:
+                    self._get_cat_proxy().rig.cat_string(cmd)
+                    self._append_log(f"cat_string({cmd!r}) OK")
+                    return True
+                except TimeoutError as exc:
+                    # flrig is busy (playing audio) — command was sent, response just never came
+                    self._append_log(f"cat_string({cmd!r}) timeout (treated as OK)  {exc}")
+                    self._reset_cat()
+                    return True
+                except xmlrpc.client.Fault as exc:
+                    # Rig is reachable but rejected the command — don't drop the connection
+                    self._append_log(f"cat_string({cmd!r}) Fault  code={exc.faultCode} {exc.faultString!r}")
+                    return False
+                except Exception as exc:
+                    self._append_log(f"cat_string({cmd!r}) FAIL  {type(exc).__name__}: {exc}")
+                    self._reset_cat()
+                    return False
+        finally:
+            self.cat_in_flight = False
 
     def is_online(self) -> bool:
         """Quick connectivity check."""

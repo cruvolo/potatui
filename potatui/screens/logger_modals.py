@@ -523,6 +523,78 @@ class QrzLogModal(ModalScreen[None]):
 
 
 # ---------------------------------------------------------------------------
+# flrig status modal
+# ---------------------------------------------------------------------------
+
+class FlrigStatusModal(ModalScreen[None]):
+    CSS = """
+    FlrigStatusModal { align: center middle; }
+    #flrig-status-box {
+        width: 60;
+        height: auto;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    #flrig-status-title {
+        text-align: center;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    #flrig-status-scroll { height: 12; }
+    #flrig-status-close { height: auto; align: right middle; margin-top: 1; }
+    """
+
+    def __init__(
+        self,
+        url: str,
+        online: bool,
+        freq_khz: float,
+        band: str,
+        mode: str,
+        state_log: list[str],
+        detail_log: list[str],
+    ) -> None:
+        super().__init__()
+        self._url = url
+        self._online = online
+        self._freq_khz = freq_khz
+        self._band = band
+        self._mode = mode
+        self._state_log = state_log    # connect/disconnect transitions
+        self._detail_log = detail_log  # raw XML-RPC call results
+
+    def compose(self) -> ComposeResult:
+        status = "[green]Online[/green]" if self._online else "[red]Offline[/red]"
+        combined = sorted(
+            self._state_log + self._detail_log,
+            reverse=True,
+        )
+        with Container(id="flrig-status-box"):
+            yield Static("flrig Connection", id="flrig-status-title")
+            yield Static(f"URL:    {self._url}")
+            yield Static(f"Status: {status}")
+            if self._online:
+                yield Static(f"Freq:   {self._freq_khz:.1f} kHz  {self._band}  {self._mode}")
+            with ScrollableContainer(id="flrig-status-scroll"):
+                if combined:
+                    for entry in combined:
+                        yield Static(entry)
+                else:
+                    yield Static("No events logged yet.", classes="muted")
+            with Horizontal(id="flrig-status-close"):
+                yield Button("Close", variant="primary", id="flrig-status-btn-close")
+
+    @on(Button.Pressed, "#flrig-status-btn-close")
+    def on_close(self) -> None:
+        self.dismiss(None)
+
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+
+
+# ---------------------------------------------------------------------------
 # Self-spot modal
 # ---------------------------------------------------------------------------
 
