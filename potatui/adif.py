@@ -10,6 +10,15 @@ from pathlib import Path
 from potatui import __version__
 from potatui.session import QSO, Session
 
+_US_STATES: frozenset[str] = frozenset({
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+    "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+    "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+    "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+    "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+    "DC", "AS", "GU", "MP", "PR", "VI",
+})
+
 # Band frequency ranges in kHz: (min_khz, max_khz, band_name)
 BAND_RANGES: list[tuple[float, float, str]] = [
     (1800, 2000, "160m"),
@@ -72,8 +81,8 @@ def _qso_to_adif(qso: QSO, operator: str, station_callsign: str, park_ref: str, 
         parts.append(_field("SUBMODE", submode))
     if qso.name:
         parts.append(_field("NAME", qso.name))
-    if qso.state:
-        parts.append(_field("STATE", qso.state))
+    if qso.state and qso.state.upper() in _US_STATES:
+        parts.append(_field("STATE", qso.state.upper()))
     if qso.notes:
         parts.append(_field("COMMENT", qso.notes))
     if qso.is_p2p and qso.p2p_ref:

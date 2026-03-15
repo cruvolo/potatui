@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: CC-BY-NC-SA-4.0
 # Copyright (c) 2026 MonkeybutlerCJH (https://github.com/MonkeybutlerCJH)
 
-"""Tests for freq_to_band() in adif.py."""
+"""Tests for adif.py — freq_to_band() and ADIF record generation."""
+
+import datetime
 
 import pytest
 
-from potatui.adif import freq_to_band
+from potatui.adif import freq_to_band, _qso_to_adif
+from potatui.session import QSO
 
 
 # --------------------------------------------------------------------------
@@ -72,3 +75,33 @@ def test_band_boundaries(freq_khz, expected):
 ])
 def test_unknown_frequency_returns_question_mark(freq_khz):
     assert freq_to_band(freq_khz) == "?"
+
+
+# --------------------------------------------------------------------------
+# STATE field — only written for valid US state abbreviations
+# --------------------------------------------------------------------------
+
+def _make_qso(state: str) -> QSO:
+    return QSO(
+        qso_id=1,
+        timestamp_utc=datetime.datetime(2026, 3, 15, 12, 0, 0),
+        callsign="M0MCM",
+        rst_sent="59",
+        rst_rcvd="59",
+        freq_khz=14200.0,
+        band="20m",
+        mode="SSB",
+        state=state,
+    )
+
+
+@pytest.mark.parametrize("state", ["NY", "CA", "TX", "WI", "DC", "PR", "GU", "ny", "ca"])
+def test_us_state_written_to_adif(state):
+    record = _qso_to_adif(_make_qso(state), "W1AW", "W1AW", "US-0001")
+    assert "<STATE:" in record
+
+
+@pytest.mark.parametrize("state", ["ENG", "WAL", "SCO", "NSW", "ON", "BC", "QLD", "NRW", ""])
+def test_non_us_state_not_written_to_adif(state):
+    record = _qso_to_adif(_make_qso(state), "W1AW", "W1AW", "US-0001")
+    assert "<STATE:" not in record
