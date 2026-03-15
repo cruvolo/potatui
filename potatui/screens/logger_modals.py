@@ -674,6 +674,8 @@ class SelfSpotModal(ModalScreen[None]):
     def on_key(self, event) -> None:
         if event.key == "escape":
             self.dismiss(None)
+        elif event.key == "enter" and not self._offline:
+            self._do_spot()
 
     @work
     async def _do_spot(self) -> None:

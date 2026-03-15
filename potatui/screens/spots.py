@@ -60,6 +60,7 @@ def _spot_age_minutes(spot_time_str: str) -> int:
 class SpotsScreen(Screen):
     BINDINGS = [
         Binding("f", "toggle_filters", "Filters"),
+        Binding("F", "toggle_filters", show=False),
         Binding("ctrl+f", "toggle_search", "Search"),
         Binding("r", "refresh", "Refresh"),
         Binding("escape", "go_back", "Back"),
