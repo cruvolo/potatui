@@ -14,6 +14,16 @@ import httpx
 _KP_URL = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
 _ALERTS_URL = "https://services.swpc.noaa.gov/products/alerts.json"
 _SFI_URL = "https://services.swpc.noaa.gov/products/summary/10cm-flux.json"
+_MUF_URL = "https://prop.kc2g.com/api/point_prediction.json"
+
+# Age threshold (seconds) beyond which MUF model data is considered stale
+_MUF_STALE_SECONDS = 17 * 60
+
+# Minimum interval between API calls as requested by prop.kc2g.com
+_MUF_CACHE_SECONDS = 15 * 60
+
+# In-memory cache: maps (lat, lon) → (MufData, monotonic fetch time)
+_muf_cache: dict[tuple[float, float], tuple[MufData, float]] = {}
 
 
 @dataclass
@@ -31,6 +41,14 @@ class SpaceWeatherAlert:
     @property
     def alert_key(self) -> str:
         return f"{self.product_id}|{self.issue_datetime}"
+
+
+@dataclass
+class MufData:
+    mufd: float
+    fof2: float
+    ts: int  # Unix timestamp of model data
+    stale: bool  # True if data is older than _MUF_STALE_SECONDS
 
 
 @dataclass
@@ -116,6 +134,31 @@ async def fetch_alerts() -> list[SpaceWeatherAlert]:
         ))
 
     return alerts
+
+
+async def fetch_muf(lat: float, lon: float) -> MufData:
+    """Fetch MUF prediction for the given lat/lon, cached for 15 min per api owner request."""
+    import time as _time
+
+    key = (round(lat, 4), round(lon, 4))
+    cached = _muf_cache.get(key)
+    if cached is not None:
+        result, fetched_at = cached
+        if _time.monotonic() - fetched_at < _MUF_CACHE_SECONDS:
+            return result
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(_MUF_URL, params={"grid": f"{lat},{lon}"})
+        resp.raise_for_status()
+        data = resp.json()
+
+    mufd = float(data["mufd"])
+    fof2 = float(data["fof2"])
+    ts = int(data["ts"])
+    stale = (_time.time() - ts) > _MUF_STALE_SECONDS
+    result = MufData(mufd=mufd, fof2=fof2, ts=ts, stale=stale)
+    _muf_cache[key] = (result, _time.monotonic())
+    return result
 
 
 async def fetch_space_weather() -> SpaceWeatherData:

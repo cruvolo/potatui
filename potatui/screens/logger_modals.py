@@ -15,7 +15,7 @@ from textual.widgets import Button, Input, Label, ListItem, ListView, Select, St
 
 from potatui.adif import freq_to_band
 from potatui.session import QSO, Session
-from potatui.space_weather import SpaceWeatherData
+from potatui.space_weather import SpaceWeatherData, fetch_muf
 
 MODES = ["SSB", "CW", "FT8", "FT4", "AM", "FM"]
 
@@ -956,6 +956,14 @@ class SolarWeatherModal(ModalScreen[None]):
     #solar-current {
         margin-bottom: 1;
     }
+    #solar-prop-block {
+        height: auto;
+        margin-bottom: 1;
+    }
+    #solar-prop-header {
+        text-style: bold;
+        color: $text-muted;
+    }
     #solar-history-label, #solar-alerts-label {
         text-style: bold;
         color: $text-muted;
@@ -975,9 +983,11 @@ class SolarWeatherModal(ModalScreen[None]):
     .solar-muted { color: $text-muted; text-style: italic; }
     """
 
-    def __init__(self, data: SpaceWeatherData) -> None:
+    def __init__(self, data: SpaceWeatherData, park_latlon: tuple[float, float] | None = None, park_grid: str | None = None) -> None:
         super().__init__()
         self._data = data
+        self._park_latlon = park_latlon
+        self._park_grid = park_grid
 
     def compose(self) -> ComposeResult:
         from potatui.space_weather import kp_severity
@@ -998,6 +1008,17 @@ class SolarWeatherModal(ModalScreen[None]):
                 kp_part = f"Kp: [{color}]K:{data.kp_current:.1f}[/{color}]  [{color}]{label}[/{color}]"
             sfi_part = f"SFI: {data.sfi:.0f}" if data.sfi is not None else "SFI: [dim]unknown[/dim]"
             yield Static(f"{kp_part}    {sfi_part}", id="solar-current")
+
+            # Propagation block — only shown when park_latlon is available
+            if self._park_latlon is not None:
+                grid_label = self._park_grid or "unknown grid"
+                with Vertical(id="solar-prop-block"):
+                    yield Static(
+                        f"Propagation info for [bold]{grid_label}[/bold] [dim]via prop.kc2g.com[/dim]",
+                        id="solar-prop-header",
+                    )
+                    yield Static("[dim]loading…[/dim]", id="solar-muf-val")
+                    yield Static("", id="solar-fof2-val")
 
             with ScrollableContainer(id="solar-scroll"):
                 # Kp history
@@ -1029,6 +1050,29 @@ class SolarWeatherModal(ModalScreen[None]):
 
             with Horizontal(id="solar-btn-row"):
                 yield Button("Close", variant="primary", id="solar-close")
+
+    def on_mount(self) -> None:
+        if self._park_latlon is not None:
+            self._fetch_muf()
+
+    @work(exclusive=True, group="solar-muf")
+    async def _fetch_muf(self) -> None:
+        lat, lon = self._park_latlon  # type: ignore[misc]
+        try:
+            muf = await fetch_muf(lat, lon)
+        except Exception:
+            try:
+                self.query_one("#solar-muf-val", Static).update("[dim]unavailable[/dim]")
+            except Exception:
+                pass
+            return
+
+        stale_note = "  [dim](stale)[/dim]" if muf.stale else ""
+        try:
+            self.query_one("#solar-muf-val", Static).update(f"MUF:  [bold]{muf.mufd:.1f} MHz[/bold]{stale_note}")
+            self.query_one("#solar-fof2-val", Static).update(f"foF2: {muf.fof2:.1f} MHz")
+        except Exception:
+            pass
 
     @on(Button.Pressed, "#solar-close")
     def on_close(self) -> None:

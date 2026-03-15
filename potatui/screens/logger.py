@@ -95,6 +95,7 @@ class LoggerScreen(Screen):
         from potatui.qrz import QRZClient
         self._qrz = QRZClient(config.qrz_username, config.qrz_password, config.qrz_api_url)
         self._park_latlon: tuple[float, float] | None = None
+        self._park_grid: str | None = None  # grid square used for MUF lookup
         self._last_spot_data: tuple[datetime, str, str] | None = None  # (utc_time, spotter, comments)
         self._qrz_filled_name: bool = False   # True if #f-name was auto-filled by QRZ
         self._qrz_filled_state: bool = False  # True if #f-state was auto-filled by QRZ
@@ -227,6 +228,7 @@ class LoggerScreen(Screen):
         if self.session.grid:
             try:
                 self._park_latlon = grid_to_latlon(self.session.grid)
+                self._park_grid = self.session.grid
                 return
             except Exception:
                 pass
@@ -240,9 +242,11 @@ class LoggerScreen(Screen):
         if info:
             if info.lat is not None and info.lon is not None:
                 self._park_latlon = (info.lat, info.lon)
+                self._park_grid = info.grid or None
             elif info.grid:
                 try:
                     self._park_latlon = grid_to_latlon(info.grid)
+                    self._park_grid = info.grid
                 except Exception:
                     pass
 
@@ -564,7 +568,7 @@ class LoggerScreen(Screen):
             self.notify("Space weather data not yet loaded.")
             return
         self._stop_solar_flash()
-        self.app.push_screen(SolarWeatherModal(self._solar_data))
+        self.app.push_screen(SolarWeatherModal(self._solar_data, park_latlon=self._park_latlon, park_grid=self._park_grid))
 
     def on_unmount(self) -> None:
         self._stop_solar_flash()
