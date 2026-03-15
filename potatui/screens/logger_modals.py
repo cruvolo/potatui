@@ -985,17 +985,17 @@ class SolarWeatherModal(ModalScreen[None]):
         with Container(id="solar-box"):
             yield Static("☀ Space Weather", id="solar-title")
 
-            # Current Kp
+            # Current Kp + SFI
+            kp_part: str
             if data.kp_current is None:
-                yield Static("Current Kp: [dim]unknown[/dim]", id="solar-current")
+                kp_part = "Kp: [dim]unknown[/dim]"
             else:
                 sev = kp_severity(data.kp_current)
                 color = {"normal": "green", "elevated": "yellow", "storm": "red"}[sev]
                 label = {"normal": "Normal", "elevated": "Elevated", "storm": "Storm"}[sev]
-                yield Static(
-                    f"Current Kp: [{color}]K:{data.kp_current:.1f}[/{color}]  [{color}]{label}[/{color}]",
-                    id="solar-current",
-                )
+                kp_part = f"Kp: [{color}]K:{data.kp_current:.1f}[/{color}]  [{color}]{label}[/{color}]"
+            sfi_part = f"SFI: {data.sfi:.0f}" if data.sfi is not None else "SFI: [dim]unknown[/dim]"
+            yield Static(f"{kp_part}    {sfi_part}", id="solar-current")
 
             with ScrollableContainer(id="solar-scroll"):
                 # Kp history

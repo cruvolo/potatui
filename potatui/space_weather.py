@@ -13,6 +13,7 @@ import httpx
 
 _KP_URL = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
 _ALERTS_URL = "https://services.swpc.noaa.gov/products/alerts.json"
+_SFI_URL = "https://services.swpc.noaa.gov/products/summary/10cm-flux.json"
 
 
 @dataclass
@@ -37,6 +38,7 @@ class SpaceWeatherData:
     kp_current: float | None
     kp_history: list[KpReading]
     active_alerts: list[SpaceWeatherAlert]
+    sfi: float | None = None
     fetch_error: bool = False
 
 
@@ -65,6 +67,15 @@ async def fetch_kp() -> list[KpReading]:
     # newest first, cap at 8
     readings.reverse()
     return readings[:8]
+
+
+async def fetch_sfi() -> float | None:
+    """Fetch the current 10.7cm solar flux index (SFI)."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(_SFI_URL)
+        resp.raise_for_status()
+        data = resp.json()
+    return float(data["Flux"])
 
 
 async def fetch_alerts() -> list[SpaceWeatherAlert]:
@@ -108,16 +119,18 @@ async def fetch_alerts() -> list[SpaceWeatherAlert]:
 
 
 async def fetch_space_weather() -> SpaceWeatherData:
-    """Fetch Kp index and alerts; never raises."""
-    results = await asyncio.gather(fetch_kp(), fetch_alerts(), return_exceptions=True)
+    """Fetch Kp index, SFI, and alerts; never raises."""
+    results = await asyncio.gather(fetch_kp(), fetch_alerts(), fetch_sfi(), return_exceptions=True)
 
     kp_result = results[0]
     alerts_result = results[1]
+    sfi_result = results[2]
 
     fetch_error = isinstance(kp_result, BaseException) or isinstance(alerts_result, BaseException)
 
     kp_history: list[KpReading] = kp_result if isinstance(kp_result, list) else []
     active_alerts: list[SpaceWeatherAlert] = alerts_result if isinstance(alerts_result, list) else []
+    sfi: float | None = sfi_result if isinstance(sfi_result, float) else None
 
     kp_current = kp_history[0].kp if kp_history else None
 
@@ -125,5 +138,6 @@ async def fetch_space_weather() -> SpaceWeatherData:
         kp_current=kp_current,
         kp_history=kp_history,
         active_alerts=active_alerts,
+        sfi=sfi,
         fetch_error=fetch_error,
     )
