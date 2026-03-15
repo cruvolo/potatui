@@ -15,6 +15,7 @@ from textual.widgets import Button, Input, Label, ListItem, ListView, Select, St
 
 from potatui.adif import freq_to_band
 from potatui.session import QSO, Session
+from potatui.space_weather import SpaceWeatherData
 
 MODES = ["SSB", "CW", "FT8", "FT4", "AM", "FM"]
 
@@ -917,6 +918,117 @@ class WawaModal(ModalScreen[None]):
                 yield Button("Nice!", variant="warning", id="wawa-close")
 
     @on(Button.Pressed, "#wawa-close")
+    def on_close(self) -> None:
+        self.dismiss(None)
+
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+
+
+# ---------------------------------------------------------------------------
+# Solar / Space Weather Modal
+# ---------------------------------------------------------------------------
+
+
+class SolarWeatherModal(ModalScreen[None]):
+    """Space weather detail: current Kp, 24h history, and active alerts."""
+
+    CSS = """
+    SolarWeatherModal {
+        align: center middle;
+    }
+    #solar-box {
+        width: 64;
+        height: auto;
+        max-height: 38;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    #solar-title {
+        text-align: center;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    #solar-current {
+        margin-bottom: 1;
+    }
+    #solar-history-label, #solar-alerts-label {
+        text-style: bold;
+        color: $text-muted;
+        margin-top: 1;
+    }
+    #solar-scroll {
+        height: 20;
+    }
+    #solar-btn-row {
+        height: auto;
+        align: right middle;
+        margin-top: 1;
+    }
+    .solar-bar-normal { color: $success; }
+    .solar-bar-elevated { color: $warning; }
+    .solar-bar-storm { color: $error; }
+    .solar-muted { color: $text-muted; text-style: italic; }
+    """
+
+    def __init__(self, data: SpaceWeatherData) -> None:
+        super().__init__()
+        self._data = data
+
+    def compose(self) -> ComposeResult:
+        from potatui.space_weather import kp_severity
+
+        data = self._data
+
+        with Container(id="solar-box"):
+            yield Static("☀ Space Weather", id="solar-title")
+
+            # Current Kp
+            if data.kp_current is None:
+                yield Static("Current Kp: [dim]unknown[/dim]", id="solar-current")
+            else:
+                sev = kp_severity(data.kp_current)
+                color = {"normal": "green", "elevated": "yellow", "storm": "red"}[sev]
+                label = {"normal": "Normal", "elevated": "Elevated", "storm": "Storm"}[sev]
+                yield Static(
+                    f"Current Kp: [{color}]K:{data.kp_current:.1f}[/{color}]  [{color}]{label}[/{color}]",
+                    id="solar-current",
+                )
+
+            with ScrollableContainer(id="solar-scroll"):
+                # Kp history
+                yield Static("Last 24h Kp", id="solar-history-label")
+                if data.kp_history:
+                    for reading in data.kp_history:
+                        filled = round(reading.kp)
+                        bar = "▓" * min(filled, 9) + "░" * max(0, 9 - filled)
+                        sev = kp_severity(reading.kp)
+                        color = {"normal": "green", "elevated": "yellow", "storm": "red"}[sev]
+                        yield Static(
+                            f"{reading.time_utc[:16]}  K:{reading.kp:<4.1f}  [{color}]{bar}[/{color}]"
+                        )
+                else:
+                    yield Static("No history available.", classes="solar-muted")
+
+                # Active alerts
+                yield Static("Active Alerts", id="solar-alerts-label")
+                if data.active_alerts:
+                    for alert in data.active_alerts:
+                        snippet = alert.message[:120].replace("\n", " ")
+                        if len(alert.message) > 120:
+                            snippet += "…"
+                        yield Static(
+                            f"[bold]{alert.product_id}[/bold]  {alert.issue_datetime[:16]}\n{snippet}"
+                        )
+                else:
+                    yield Static("No active geomagnetic alerts.", classes="solar-muted")
+
+            with Horizontal(id="solar-btn-row"):
+                yield Button("Close", variant="primary", id="solar-close")
+
+    @on(Button.Pressed, "#solar-close")
     def on_close(self) -> None:
         self.dismiss(None)
 

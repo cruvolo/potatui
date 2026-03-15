@@ -16,6 +16,7 @@ A terminal user interface (TUI) for logging Parks on the Air (POTA) activations.
 - **QRZ callsign lookup** — name, location, distance, and direction from your park shown automatically as you type a callsign. First name and state auto-fill. QRZ backfill (Ctrl+B) fills in missing names/states for all QSOs in a session. Requires a QRZ XML subscription.
 - **POTA spots browser** — live spot list with band/mode/sort/search filters, auto-refreshes every 60 seconds. QSY directly to a spot with one keypress (tunes flrig, pre-fills callsign and P2P park). Distance from your park shown per spot. Worked activators shown in green.
 - **Self-spotting** — post yourself to the POTA network from within the app. Your most recent spot is displayed live on the logging screen, showing who spotted you, how long ago, and any comments — colour-coded green/yellow/grey by age.
+- **Solar/space weather indicator** — live NOAA Kp geomagnetic index shown in the header. Flashes red and fires a warning toast when a geomagnetic storm alert is active. Click the pill to see Kp history and the full alert text. Polls every 10 minutes; skipped in offline mode.
 - **Commander** — fire CAT commands or run console commands via configurable slots with custom labels and keyboard shortcuts. Open the full panel with F7.
 - **Resume activations** — on launch, pick any previous session to continue from where you left off.
 - **ADIF export** — every QSO is appended to an ADIF file immediately. Full rewrite on edit, delete, or session end. Ready to upload to pota.app.
@@ -211,7 +212,7 @@ Press **Enter** from any field to log the QSO. UTC timestamp is stamped at log t
 ### Header bar
 
 ```
-W1AW | US-1234 Gifford Pinchot NF | 14:32z | 14225.0 kHz  20M  SSB | ● QSOs: 4  32/hr | 00:23:11     ◉ net  ● flrig  ● qrz
+W1AW | US-1234 Gifford Pinchot NF | 14:32z | 14225.0 kHz  20M  SSB | ● QSOs: 4  32/hr | 00:23:11     ◉ net  ● flrig  ● qrz  K:2.0
 ```
 
 - QSO count shows today's contacts; if resuming a multi-day session, total is shown in parentheses.
@@ -221,6 +222,7 @@ W1AW | US-1234 Gifford Pinchot NF | 14:32z | 14225.0 kHz  20M  SSB | ● QSOs: 4
 - Internet status indicator (`net`) shows whether the POTA API is reachable.
 - flrig status indicator is green when connected, red when offline.
 - QRZ indicator shows whether QRZ is configured and reachable.
+- **Solar/Kp indicator** shows the current NOAA planetary K-index: green (normal, Kp < 5), yellow (elevated, Kp 5–6), red (storm, Kp ≥ 7). Flashes red when a geomagnetic storm alert is active and fires a warning toast for each new alert (looks back 24 hours on startup). Click to open a detail modal with the last 24h Kp history and alert text. Shows `K:?` until the first successful poll.
 - When station callsign and operator callsign differ (after a Ctrl+O operator change), both are shown: `W1AW / NV3Y`.
 
 ### Key bindings

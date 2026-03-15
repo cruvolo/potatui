@@ -32,7 +32,7 @@ LoggerScreen {
     color: $warning;
 }
 
-#hdr-net, #hdr-flrig, #hdr-qrz {
+#hdr-net, #hdr-flrig, #hdr-qrz, #hdr-solar {
     width: auto;
     padding: 0 1;
     color: $background;
@@ -56,6 +56,13 @@ LoggerScreen {
     background: $warning;
     color: $background;
 }
+
+#hdr-solar.solar-normal { background: $success; }
+#hdr-solar.solar-elevated { background: $warning; color: $background; }
+#hdr-solar.solar-storm { background: $error; color: $background; }
+#hdr-solar.solar-unknown { background: $panel; color: $text-muted; }
+#hdr-solar.solar-flash-a { background: $error; color: $background; }
+#hdr-solar.solar-flash-b { background: $surface; color: $error; }
 
 #hdr-spacer {
     width: 1fr;

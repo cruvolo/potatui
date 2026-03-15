@@ -13,6 +13,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
+from textual.timer import Timer
 from textual.widgets import (
     Button,
     DataTable,
@@ -36,10 +37,12 @@ from potatui.screens.logger_modals import (
     SelfSpotModal,
     SessionSummaryModal,
     SetFreqModal,
+    SolarWeatherModal,
     WawaModal,
     _rst_default,
 )
 from potatui.session import QSO, Session
+from potatui.space_weather import SpaceWeatherData, fetch_space_weather, kp_severity
 
 # ---------------------------------------------------------------------------
 # Main Logger Screen
@@ -99,6 +102,10 @@ class LoggerScreen(Screen):
         self._qrz_bars: dict[str, Static] = {}  # callsign → QRZ info bar widget
         self._celebrated_100: bool = False  # fire rainbow only once per session
         self._table_focused: bool = False  # True when QSO table has focus
+        self._solar_data: SpaceWeatherData | None = None
+        self._seen_alert_keys: set[str] = set()
+        self._solar_flash_timer: Timer | None = None
+        self._solar_flash_toggle_state: bool = False
         self._offline: bool = config.offline_mode  # True = skip all internet calls
         self._offline_manual: bool = config.offline_mode  # True = user explicitly set offline
         self._current_utc_date = datetime.utcnow().date()
@@ -135,6 +142,8 @@ class LoggerScreen(Screen):
             yield Static("flrig", id="hdr-flrig", classes="flrig-offline")
             yield Static("|", classes="hdr-sep")
             yield Static("qrz", id="hdr-qrz", classes="qrz-unconfigured")
+            yield Static("|", classes="hdr-sep")
+            yield Static("K:?", id="hdr-solar", classes="solar-unknown")
 
         # Last-spotted bar (hidden until a spot is found)
         yield Static("", id="last-spotted-bar", classes="hidden")
@@ -193,6 +202,7 @@ class LoggerScreen(Screen):
         self.set_interval(2.0, self._poll_flrig)
         self.set_interval(30.0, self._check_internet_connectivity)
         self.set_interval(60.0, self._poll_spots_for_self)
+        self.set_interval(600.0, self._poll_space_weather)
         if self._offline_manual:
             net_widget = self.query_one("#hdr-net", Static)
             net_widget.update("OFFL")
@@ -202,6 +212,7 @@ class LoggerScreen(Screen):
         self._fetch_park_location()
         self._poll_spots_for_self()
         self._update_qrz_indicator()
+        self._poll_space_weather()
         self.query_one("#f-callsign", Input).focus()
 
     @work
@@ -468,6 +479,95 @@ class LoggerScreen(Screen):
             net_widget.update("net")
             net_widget.set_classes("net-offline")
             self._offline = True
+
+    # -----------------------------------------------------------------------
+    # Space weather
+    # -----------------------------------------------------------------------
+
+    @work(exclusive=True, group="space-weather")
+    async def _poll_space_weather(self) -> None:
+        if self._offline:
+            return
+        data = await fetch_space_weather()
+        self._solar_data = data
+        self._update_solar_indicator()
+        self._check_solar_alerts(data)
+
+    def _update_solar_indicator(self) -> None:
+        try:
+            widget = self.query_one("#hdr-solar", Static)
+        except Exception:
+            return
+        data = self._solar_data
+        if data is None or data.fetch_error or data.kp_current is None:
+            # Don't overwrite a flashing widget if we already have storm data
+            if self._solar_flash_timer is None:
+                widget.update("K:?")
+                widget.set_classes("solar-unknown")
+            return
+        kp = data.kp_current
+        sev = kp_severity(kp)
+        widget.update(f"K:{kp:.1f}")
+        if sev == "storm" and data.active_alerts:
+            self._start_solar_flash()
+        else:
+            self._stop_solar_flash()
+            widget.set_classes(f"solar-{sev}")
+
+    def _check_solar_alerts(self, data: SpaceWeatherData) -> None:
+        current_keys = {a.alert_key for a in data.active_alerts}
+        new_keys = current_keys - self._seen_alert_keys
+        self._seen_alert_keys |= current_keys
+        for alert in data.active_alerts:
+            if alert.alert_key in new_keys:
+                snippet = alert.message[:80].replace("\n", " ")
+                self.notify(
+                    f"Space weather alert: {alert.product_id} — {snippet}",
+                    severity="warning",
+                    timeout=10,
+                )
+
+    def _start_solar_flash(self) -> None:
+        if self._solar_flash_timer is not None:
+            return
+        self._solar_flash_timer = self.set_interval(0.5, self._solar_flash_toggle)
+
+    def _stop_solar_flash(self) -> None:
+        if self._solar_flash_timer is not None:
+            self._solar_flash_timer.stop()
+            self._solar_flash_timer = None
+        # Reset to appropriate severity if we have data
+        try:
+            widget = self.query_one("#hdr-solar", Static)
+            if self._solar_data and self._solar_data.kp_current is not None:
+                sev = kp_severity(self._solar_data.kp_current)
+                widget.set_classes(f"solar-{sev}")
+            else:
+                widget.set_classes("solar-unknown")
+        except Exception:
+            pass
+
+    def _solar_flash_toggle(self) -> None:
+        try:
+            widget = self.query_one("#hdr-solar", Static)
+        except Exception:
+            return
+        self._solar_flash_toggle_state = not self._solar_flash_toggle_state
+        if self._solar_flash_toggle_state:
+            widget.set_classes("solar-storm solar-flash-a")
+        else:
+            widget.set_classes("solar-storm solar-flash-b")
+
+    @on(events.Click, "#hdr-solar")
+    def on_solar_indicator_click(self) -> None:
+        if self._solar_data is None:
+            self.notify("Space weather data not yet loaded.")
+            return
+        self._stop_solar_flash()
+        self.app.push_screen(SolarWeatherModal(self._solar_data))
+
+    def on_unmount(self) -> None:
+        self._stop_solar_flash()
 
     def _add_qso_row(self, qso: QSO, display_num: int) -> None:
         table = self.query_one("#qso-table", DataTable)
