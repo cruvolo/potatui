@@ -1014,7 +1014,7 @@ class SolarWeatherModal(ModalScreen[None]):
                 grid_label = self._park_grid or "unknown grid"
                 with Vertical(id="solar-prop-block"):
                     yield Static(
-                        f"Propagation info for [bold]{grid_label}[/bold] [dim]via prop.kc2g.com[/dim]",
+                        f"Propagation info for [bold]{grid_label}[/bold] [dim]via [link=https://prop.kc2g.com/]prop.kc2g.com[/link][/dim]",
                         id="solar-prop-header",
                     )
                     yield Static("[dim]loading…[/dim]", id="solar-muf-val")
