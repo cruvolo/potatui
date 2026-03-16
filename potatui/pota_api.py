@@ -188,6 +188,36 @@ async def self_spot(
         return False, str(e)
 
 
+_location_pins: dict[str, tuple[float, float]] | None = None  # abbrev → (lat, lon)
+
+
+async def fetch_location_pins(base_url: str) -> dict[str, tuple[float, float]]:
+    """Fetch POTA location pins (state/province centroids). Cached for the process lifetime."""
+    global _location_pins
+    if _location_pins is not None:
+        return _location_pins
+    url = f"{base_url.rstrip('/')}/locations"
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                result: dict[str, tuple[float, float]] = {}
+                for item in resp.json():
+                    desc = item.get("locationDesc", "")
+                    abbrev = desc.split("-", 1)[-1] if "-" in desc else desc
+                    if not abbrev:
+                        continue
+                    try:
+                        result[abbrev] = (float(item["latitude"]), float(item["longitude"]))
+                    except (KeyError, ValueError, TypeError):
+                        continue
+                _location_pins = result
+                return result
+    except Exception:
+        pass
+    return {}
+
+
 def _freq_to_band(freq_khz: float) -> str:
     """Return band name for a frequency in kHz."""
     from potatui.adif import freq_to_band  # avoid circular at module load

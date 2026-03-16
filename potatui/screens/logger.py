@@ -45,6 +45,35 @@ from potatui.session import QSO, Session
 from potatui.space_weather import SpaceWeatherData, fetch_space_weather, kp_severity
 
 # ---------------------------------------------------------------------------
+# Shift helpers
+# ---------------------------------------------------------------------------
+
+def _shift_status(lon: float, utc_now: datetime) -> str | None:
+    """Return 'early', 'late', or None based on park longitude and current UTC.
+
+    Early Shift: 6-hour period starting at round(2 - lon/15) UTC.
+    Late Shift:  8-hour period starting at round(18 - lon/15) UTC.
+    """
+    early_start = round(2 - lon / 15) % 24
+    late_start = round(18 - lon / 15) % 24
+    minutes_utc = utc_now.hour * 60 + utc_now.minute
+
+    def _in(start_h: int, duration_h: int) -> bool:
+        start_m = start_h * 60
+        end_m = (start_m + duration_h * 60) % (24 * 60)
+        if end_m > start_m:
+            return start_m <= minutes_utc < end_m
+        # window wraps midnight
+        return minutes_utc >= start_m or minutes_utc < end_m
+
+    if _in(early_start, 6):
+        return "early"
+    if _in(late_start, 8):
+        return "late"
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Main Logger Screen
 # ---------------------------------------------------------------------------
 
@@ -98,6 +127,7 @@ class LoggerScreen(Screen):
         self._hamdb = HamDbClient()
         self._park_latlon: tuple[float, float] | None = None
         self._park_grid: str | None = None  # grid square used for MUF lookup
+        self._shift_lon: float | None = None  # longitude for shift calc (state pin for multi-location parks)
         self._last_spot_data: tuple[datetime, str, str] | None = None  # (utc_time, spotter, comments)
         self._qrz_filled_name: bool = False   # True if #f-name was auto-filled by QRZ
         self._qrz_filled_state: bool = False  # True if #f-state was auto-filled by QRZ
@@ -147,6 +177,7 @@ class LoggerScreen(Screen):
             yield Static("qrz", id="hdr-qrz", classes="qrz-unconfigured")
             yield Static("|", classes="hdr-sep")
             yield Static("K:?", id="hdr-solar", classes="solar-unknown")
+            yield Static("", id="hdr-shift", classes="shift-inactive")
 
         # Last-spotted bar (hidden until a spot is found)
         yield Static("", id="last-spotted-bar", classes="hidden")
@@ -227,30 +258,41 @@ class LoggerScreen(Screen):
         Falls back to the park's lat/lon from the POTA API/local DB.
         """
         from potatui.qrz import grid_to_latlon
+        # User's grid takes priority for distance calcs (_park_latlon)
         if self.session.grid:
             try:
                 self._park_latlon = grid_to_latlon(self.session.grid)
                 self._park_grid = self.session.grid
-                return
             except Exception:
                 pass
-        if self._offline:
-            # Try local DB only — no API call
-            from potatui.park_db import park_db
-            info = park_db.lookup(self.session.active_park_ref) if park_db.loaded else None
-        else:
-            from potatui.pota_api import lookup_park
-            info = await lookup_park(self.session.active_park_ref, self.config.pota_api_base)
-        if info:
-            if info.lat is not None and info.lon is not None:
-                self._park_latlon = (info.lat, info.lon)
-                self._park_grid = info.grid or None
-            elif info.grid:
-                try:
-                    self._park_latlon = grid_to_latlon(info.grid)
-                    self._park_grid = info.grid
-                except Exception:
-                    pass
+        # If grid didn't resolve, fall back to the park's own lat/lon
+        if self._park_latlon is None:
+            if self._offline:
+                # Try local DB only — no API call
+                from potatui.park_db import park_db
+                info = park_db.lookup(self.session.active_park_ref) if park_db.loaded else None
+            else:
+                from potatui.pota_api import lookup_park
+                info = await lookup_park(self.session.active_park_ref, self.config.pota_api_base)
+            if info:
+                if info.lat is not None and info.lon is not None:
+                    self._park_latlon = (info.lat, info.lon)
+                    self._park_grid = info.grid or None
+                elif info.grid:
+                    try:
+                        self._park_latlon = grid_to_latlon(info.grid)
+                        self._park_grid = info.grid
+                    except Exception:
+                        pass
+        # For multi-location parks, use the state/province pin longitude for shift calc
+        if self.session.my_state and not self._offline:
+            from potatui.pota_api import fetch_location_pins
+            pins = await fetch_location_pins(self.config.pota_api_base)
+            if self.session.my_state in pins:
+                self._shift_lon = pins[self.session.my_state][1]
+        if self._shift_lon is None and self._park_latlon is not None:
+            self._shift_lon = self._park_latlon[1]
+        self._update_shift_indicator()
 
     def _setup_table(self) -> None:
         table = self.query_one("#qso-table", DataTable)
@@ -291,6 +333,47 @@ class LoggerScreen(Screen):
         else:
             flrig_widget.add_class("flrig-offline")
             flrig_widget.remove_class("flrig-online")
+
+    def _update_shift_indicator(self) -> None:
+        """Update the Early/Late Shift emoji indicator in the header."""
+        widget = self.query_one("#hdr-shift", Static)
+        if self._shift_lon is None:
+            widget.update("")
+            widget.set_classes("shift-inactive")
+            return
+        lon = self._shift_lon
+        status = _shift_status(lon, datetime.utcnow())
+        if status == "early":
+            widget.update("🌅")
+            widget.set_classes("shift-early")
+        elif status == "late":
+            widget.update("🌙")
+            widget.set_classes("shift-late")
+        else:
+            widget.update("")
+            widget.set_classes("shift-inactive")
+
+    @on(events.Click, "#hdr-shift")
+    def _on_shift_click(self) -> None:
+        if self._shift_lon is None:
+            return
+        lon = self._shift_lon
+        now = datetime.utcnow()
+        early_start = round(2 - lon / 15) % 24
+        late_start = round(18 - lon / 15) % 24
+        status = _shift_status(lon, now)
+        if status == "early":
+            end_h = (early_start + 6) % 24
+            self.notify(
+                f"Early Shift active: {early_start:02d}:00 – {end_h:02d}:00 UTC",
+                title="🌅 Early Shift",
+            )
+        elif status == "late":
+            end_h = (late_start + 8) % 24
+            self.notify(
+                f"Late Shift active: {late_start:02d}:00 – {end_h:02d}:00 UTC",
+                title="🌙 Late Shift",
+            )
 
     def _update_qso_count(self) -> None:
         now = datetime.utcnow()
@@ -351,6 +434,7 @@ class LoggerScreen(Screen):
         self.query_one("#hdr-elapsed", Static).update(elapsed_str)
         self._update_qso_count()
         self._update_last_spotted_bar()
+        self._update_shift_indicator()
 
     @work(exclusive=True, group="self-spot-poll")
     async def _poll_spots_for_self(self) -> None:

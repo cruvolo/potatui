@@ -144,6 +144,15 @@ class SetupScreen(Screen):
             yield OptionList(id="park-suggestions")
             yield Static("", id="park-lookup")
 
+            with Horizontal(classes="field-row", id="state-row"):
+                yield Label("Your State:", classes="field-label")
+                yield Select(
+                    [],
+                    allow_blank=True,
+                    id="my_state",
+                    classes="field-input",
+                )
+
             with Horizontal(classes="field-row"):
                 yield Label("Grid Square:", classes="field-label")
                 yield Input(
@@ -176,15 +185,6 @@ class SetupScreen(Screen):
                     value=self.config.antenna,
                     placeholder="EFHW",
                     id="antenna",
-                    classes="field-input",
-                )
-
-            with Horizontal(classes="field-row", id="state-row"):
-                yield Label("Your State:", classes="field-label")
-                yield Select(
-                    [],
-                    allow_blank=True,
-                    id="my_state",
                     classes="field-input",
                 )
 

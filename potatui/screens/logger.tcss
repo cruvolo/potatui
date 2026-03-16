@@ -64,6 +64,17 @@ LoggerScreen {
 #hdr-solar.solar-flash-a { background: $error; color: $background; }
 #hdr-solar.solar-flash-b { background: $surface; color: $error; }
 
+#hdr-shift {
+    width: auto;
+    padding: 0 1;
+    text-style: bold;
+}
+#hdr-shift.shift-inactive { display: none; }
+#hdr-shift.shift-early { background: #b8860b; color: $background; }
+#hdr-shift.shift-late  { background: #1e3a5f; color: $text; }
+#hdr-shift.shift-early:hover { background: #daa520; }
+#hdr-shift.shift-late:hover  { background: #2a527a; }
+
 #hdr-spacer {
     width: 1fr;
 }
