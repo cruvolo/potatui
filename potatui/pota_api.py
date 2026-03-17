@@ -192,7 +192,11 @@ _location_pins: dict[str, tuple[float, float]] | None = None  # abbrev → (lat,
 
 
 async def fetch_location_pins(base_url: str) -> dict[str, tuple[float, float]]:
-    """Fetch POTA location pins (state/province centroids). Cached for the process lifetime."""
+    """Fetch POTA location pins (state/province centroids). Cached for the process lifetime.
+
+    Keyed by full locationDesc (e.g. "US-CT") to avoid collisions between entities
+    that share the same 2-letter abbreviation.
+    """
     global _location_pins
     if _location_pins is not None:
         return _location_pins
@@ -203,12 +207,11 @@ async def fetch_location_pins(base_url: str) -> dict[str, tuple[float, float]]:
             if resp.status_code == 200:
                 result: dict[str, tuple[float, float]] = {}
                 for item in resp.json():
-                    desc = item.get("locationDesc", "")
-                    abbrev = desc.split("-", 1)[-1] if "-" in desc else desc
-                    if not abbrev:
+                    desc = item.get("locationDesc", "").strip()
+                    if not desc:
                         continue
                     try:
-                        result[abbrev] = (float(item["latitude"]), float(item["longitude"]))
+                        result[desc] = (float(item["latitude"]), float(item["longitude"]))
                     except (KeyError, ValueError, TypeError):
                         continue
                 _location_pins = result

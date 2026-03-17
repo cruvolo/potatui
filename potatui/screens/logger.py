@@ -284,12 +284,15 @@ class LoggerScreen(Screen):
                         self._park_grid = info.grid
                     except Exception:
                         pass
-        # For multi-location parks, use the state/province pin longitude for shift calc
+        # For multi-location parks, use the state/province pin longitude for shift calc.
+        # Key is the full locationDesc (e.g. "US-CT") to avoid cross-entity abbrev collisions.
         if self.session.my_state and not self._offline:
             from potatui.pota_api import fetch_location_pins
             pins = await fetch_location_pins(self.config.pota_api_base)
-            if self.session.my_state in pins:
-                self._shift_lon = pins[self.session.my_state][1]
+            entity = self.session.active_park_ref.split("-")[0]  # "US" from "US-4556"
+            location_key = f"{entity}-{self.session.my_state}"   # "US-CT"
+            if location_key in pins:
+                self._shift_lon = pins[location_key][1]
         if self._shift_lon is None and self._park_latlon is not None:
             self._shift_lon = self._park_latlon[1]
         self._update_shift_indicator()
