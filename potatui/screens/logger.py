@@ -860,7 +860,7 @@ class LoggerScreen(Screen):
         if raw_cs == "WAWA":
             use_miles = self.config.distance_unit.lower() == "mi"
             self.app.push_screen(
-                WawaModal(self.session.grid, use_miles),
+                WawaModal(self.session.grid, use_miles, self._offline),
                 callback=self._after_wawa,
             )
             return

@@ -883,15 +883,9 @@ class WawaModal(ModalScreen[None]):
         color: $warning;
         margin-bottom: 1;
     }
-    #wawa-address {
+    #wawa-result {
         text-align: center;
         color: $text;
-        margin-bottom: 1;
-    }
-    #wawa-distance {
-        text-align: center;
-        color: $text-muted;
-        text-style: italic;
         margin-bottom: 1;
     }
     #wawa-btn-row {
@@ -901,23 +895,52 @@ class WawaModal(ModalScreen[None]):
     }
     """
 
-    def __init__(self, grid: str, use_miles: bool = True) -> None:
+    def __init__(self, grid: str, use_miles: bool = True, offline_mode: bool = False) -> None:
         super().__init__()
         self._grid = grid
         self._use_miles = use_miles
+        self._offline_mode = offline_mode
 
     def compose(self) -> ComposeResult:
-        from potatui.wawa import WAWA_ASCII, find_nearest_wawa
-
-        address, distance = find_nearest_wawa(self._grid, self._use_miles)
-        unit = "mi" if self._use_miles else "km"
+        from potatui.wawa import WAWA_ASCII
 
         with Container(id="wawa-box"):
             yield Static(WAWA_ASCII, id="wawa-art")
-            yield Static(address, id="wawa-address")
-            yield Static(f"{distance:,.1f} {unit} away", id="wawa-distance")
+            yield Static("Searching for nearest Wawa…", id="wawa-result")
             with Horizontal(id="wawa-btn-row"):
-                yield Button("Nice!", variant="warning", id="wawa-close")
+                yield Button("Nice!", variant="warning", id="wawa-close", disabled=True)
+
+    def on_mount(self) -> None:
+        self._do_lookup()
+
+    @work
+    async def _do_lookup(self) -> None:
+        from potatui.qrz import grid_to_latlon
+        from potatui.wawa import find_nearest_wawa_osm
+
+        result_widget = self.query_one("#wawa-result", Static)
+        unit = "mi" if self._use_miles else "km"
+
+        if self._offline_mode:
+            result_widget.update("Offline mode active — Wawa search unavailable.")
+        else:
+            try:
+                lat, lon = grid_to_latlon(self._grid)
+                result = await find_nearest_wawa_osm(lat, lon, self._use_miles)
+                if result is None:
+                    result_widget.update("No Wawas within 50 miles. Sad :(")
+                else:
+                    address, distance = result
+                    result_widget.update(f"{address}\n{distance:.1f} {unit} away")
+            except RuntimeError as e:
+                if str(e) == "rate_limited":
+                    result_widget.update("Overpass API rate limited — try again in a minute.")
+                else:
+                    result_widget.update("Could not reach OpenStreetMap — check your connection.")
+            except Exception:
+                result_widget.update("Could not reach OpenStreetMap — check your connection.")
+
+        self.query_one("#wawa-close", Button).disabled = False
 
     @on(Button.Pressed, "#wawa-close")
     def on_close(self) -> None:
