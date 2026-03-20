@@ -50,7 +50,16 @@ def _field(tag: str, value: str) -> str:
     return f"<{tag}:{len(value)}>{value}"
 
 
-def _qso_to_adif(qso: QSO, operator: str, station_callsign: str, park_ref: str, my_state: str = "") -> str:
+def _qso_to_adif(
+    qso: QSO,
+    operator: str,
+    station_callsign: str,
+    park_ref: str,
+    my_state: str = "",
+    rig: str = "",
+    antenna: str = "",
+    power_w: int = 0,
+) -> str:
     """Convert a QSO to an ADIF record string."""
     date_str = qso.timestamp_utc.strftime("%Y%m%d")
     time_str = qso.timestamp_utc.strftime("%H%M%S")
@@ -77,6 +86,12 @@ def _qso_to_adif(qso: QSO, operator: str, station_callsign: str, park_ref: str, 
 
     if my_state:
         parts.append(_field("MY_STATE", my_state.upper()))
+    if rig:
+        parts.append(_field("MY_RIG", rig))
+    if antenna:
+        parts.append(_field("MY_ANTENNA", antenna))
+    if power_w > 0:
+        parts.append(_field("TX_PWR", str(power_w)))
     if submode:
         parts.append(_field("SUBMODE", submode))
     if qso.name:
@@ -128,17 +143,27 @@ def write_adif(session: Session, path: Path, park_ref: str | None = None) -> Non
         f.write(_adif_header())
         for qso in session.qsos:
             op = qso.operator or session.operator
-            f.write(_qso_to_adif(qso, op, session.station_callsign, effective_ref, session.my_state))
+            f.write(_qso_to_adif(qso, op, session.station_callsign, effective_ref, session.my_state, session.rig, session.antenna, session.power_w))
 
 
-def append_qso_adif(qso: QSO, operator: str, station_callsign: str, park_ref: str, path: Path, my_state: str = "") -> None:
+def append_qso_adif(
+    qso: QSO,
+    operator: str,
+    station_callsign: str,
+    park_ref: str,
+    path: Path,
+    my_state: str = "",
+    rig: str = "",
+    antenna: str = "",
+    power_w: int = 0,
+) -> None:
     """Append a single QSO to an ADIF file, writing header if new."""
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
         with open(path, "w", encoding="utf-8") as f:
             f.write(_adif_header())
     with open(path, "a", encoding="utf-8") as f:
-        f.write(_qso_to_adif(qso, operator, station_callsign, park_ref, my_state))
+        f.write(_qso_to_adif(qso, operator, station_callsign, park_ref, my_state, rig, antenna, power_w))
 
 
 def session_file_stem(session: Session, park_ref: str | None = None) -> str:

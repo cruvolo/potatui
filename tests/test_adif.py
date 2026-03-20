@@ -105,3 +105,60 @@ def test_us_state_written_to_adif(state):
 def test_non_us_state_not_written_to_adif(state):
     record = _qso_to_adif(_make_qso(state), "W1AW", "W1AW", "US-0001")
     assert "<STATE:" not in record
+
+
+# --------------------------------------------------------------------------
+# MY_RIG, MY_ANTENNA, TX_PWR fields
+# --------------------------------------------------------------------------
+
+def _make_basic_qso() -> QSO:
+    return QSO(
+        qso_id=1,
+        timestamp_utc=datetime.datetime(2026, 3, 15, 12, 0, 0),
+        callsign="W1AW",
+        rst_sent="59",
+        rst_rcvd="59",
+        freq_khz=14200.0,
+        band="20m",
+        mode="SSB",
+    )
+
+
+def test_rig_written_to_adif():
+    record = _qso_to_adif(_make_basic_qso(), "W1AW", "W1AW", "US-0001", rig="IC-7300")
+    assert "<MY_RIG:7>IC-7300" in record
+
+
+def test_antenna_written_to_adif():
+    record = _qso_to_adif(_make_basic_qso(), "W1AW", "W1AW", "US-0001", antenna="EFHW")
+    assert "<MY_ANTENNA:4>EFHW" in record
+
+
+def test_power_written_to_adif():
+    record = _qso_to_adif(_make_basic_qso(), "W1AW", "W1AW", "US-0001", power_w=100)
+    assert "<TX_PWR:3>100" in record
+
+
+def test_empty_rig_not_written():
+    record = _qso_to_adif(_make_basic_qso(), "W1AW", "W1AW", "US-0001", rig="")
+    assert "<MY_RIG:" not in record
+
+
+def test_empty_antenna_not_written():
+    record = _qso_to_adif(_make_basic_qso(), "W1AW", "W1AW", "US-0001", antenna="")
+    assert "<MY_ANTENNA:" not in record
+
+
+def test_zero_power_not_written():
+    record = _qso_to_adif(_make_basic_qso(), "W1AW", "W1AW", "US-0001", power_w=0)
+    assert "<TX_PWR:" not in record
+
+
+def test_all_station_fields_together():
+    record = _qso_to_adif(
+        _make_basic_qso(), "W1AW", "W1AW", "US-0001",
+        rig="Yaesu FT-710", antenna="EFHW", power_w=50,
+    )
+    assert "<MY_RIG:" in record
+    assert "<MY_ANTENNA:" in record
+    assert "<TX_PWR:2>50" in record
