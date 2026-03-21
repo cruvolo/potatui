@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta
 
 from textual import on, work
@@ -14,6 +15,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Input, Label, ListItem, ListView, Rule, Select, Static
 
 from potatui.adif import freq_to_band
+from potatui.park_db import park_db
 from potatui.session import QSO, Session
 from potatui.space_weather import SpaceWeatherData, fetch_muf
 
@@ -1225,6 +1227,7 @@ class AboutModal(ModalScreen[None]):
         text-align: center;
         color: $primary;
         margin-bottom: 0;
+        opacity: 1.0;
     }
     #about-subtitle {
         text-align: center;
@@ -1241,11 +1244,34 @@ class AboutModal(ModalScreen[None]):
         height: auto;
         margin-bottom: 0;
     }
-    #about-meta {
-        text-align: center;
-        color: $text-muted;
-        margin-top: 1;
+    #about-meta-row {
+        align: center middle;
         height: auto;
+        margin-top: 1;
+    }
+    #about-meta-prefix {
+        color: $text-muted;
+        width: auto;
+    }
+    #about-db-btn {
+        color: $primary;
+        background: transparent;
+        border: none;
+        height: auto;
+        min-width: 0;
+        width: auto;
+        padding: 0;
+        text-style: underline;
+    }
+    #about-db-btn:hover {
+        background: transparent;
+        color: $primary-lighten-1;
+        text-style: underline bold;
+    }
+    #about-db-btn:focus {
+        background: transparent;
+        color: $primary-lighten-1;
+        text-style: underline bold;
     }
     #about-btn-row {
         align: center middle;
@@ -1256,6 +1282,8 @@ class AboutModal(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         logo_text = "\n".join(_ABOUT_LOGO)
+        db_date = park_db.db_updated
+        db_label = db_date if db_date else "not downloaded"
         with Container(id="about-box"):
             yield Static(logo_text, id="about-logo")
             yield Static(_ABOUT_SUBTITLE, id="about-subtitle")
@@ -1265,15 +1293,34 @@ class AboutModal(ModalScreen[None]):
                 "Licensed under the GNU General Public License v3.0 or later",
                 id="about-body",
             )
-            yield Static(
-                f"Last updated: {_LAST_UPDATED}",
-                id="about-meta",
-            )
+            with Horizontal(id="about-meta-row"):
+                yield Static(f"App updated: {_LAST_UPDATED}  ·  Park DB: ", id="about-meta-prefix")
+                yield Button(db_label, id="about-db-btn")
             with Horizontal(id="about-btn-row"):
                 yield Button("Close", variant="primary", id="about-close")
 
     def on_mount(self) -> None:
         self.query_one("#about-close", Button).focus()
+        self._pulse_t = 0.0
+        self.set_interval(1 / 20, self._pulse_step)
+
+    def _pulse_step(self) -> None:
+        self._pulse_t += 1 / 20
+        # Sine wave: 0.45–1.0 range, ~3-second period
+        opacity = 0.725 + 0.275 * math.sin(2 * math.pi * self._pulse_t / 3.0)
+        self.query_one("#about-logo", Static).styles.opacity = opacity
+
+    @on(Button.Pressed, "#about-db-btn")
+    def on_db_btn(self) -> None:
+        from potatui.screens.park_update import ParkDbModal
+
+        def _after_update(downloaded: bool) -> None:
+            if downloaded:
+                park_db.load()
+                new_date = park_db.db_updated or "not downloaded"
+                self.query_one("#about-db-btn", Button).label = new_date
+
+        self.app.push_screen(ParkDbModal(is_refresh=True), _after_update)
 
     @on(Button.Pressed, "#about-close")
     def on_close(self) -> None:

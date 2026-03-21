@@ -11,6 +11,8 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static
 
+from potatui.park_db import park_db
+
 
 class ParkDbModal(ModalScreen[bool]):
     """Prompt to download (or refresh) the local POTA park database CSV."""
@@ -77,8 +79,10 @@ class ParkDbModal(ModalScreen[bool]):
     def compose(self) -> ComposeResult:
         if self._is_refresh:
             title = "Park Database Update"
+            age = park_db.db_age_days
+            age_str = f"{age} day{'s' if age != 1 else ''}" if age is not None else "unknown"
             desc = (
-                "Your local POTA park database is over 30 days old.\n\n"
+                f"Your POTA park database is {age_str} old.\n\n"
                 "Downloading a fresh copy ensures you have the latest\n"
                 "park names and locations available offline."
             )

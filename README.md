@@ -9,7 +9,7 @@ A terminal user interface (TUI) for logging Parks on the Air (POTA) activations.
 
 ## Features
 
-- **Built for activators** — built for fast logging, live POTA spots with one-press QSY, automatic ADIF export, and QRZ callsign lookup, all in a terminal that runs on any laptop you bring to the field.
+- **Built for activators** — fast logging, live POTA spots with one-press QSY, automatic ADIF export, and QRZ callsign lookup, all in a terminal that runs on any laptop you bring to the field.
 - **P2P park lookup** — dedicated P2P field does a live lookup, displays the park name and distance/bearing from your park, and auto-fills the State field with the state abbreviation.
 - **Callsign lookup** — name, location, distance, and direction from your park shown automatically as you type a callsign. First name and state auto-fill. Backfill (Ctrl+B) fills in missing names/states for all QSOs in a session. Uses QRZ XML if configured; falls back to HamDB.org (no account required) automatically.
 - **POTA spots browser** — live spot list with band/mode/sort/search filters, auto-refreshes every 60 seconds. QSY directly to a spot with one keypress (tunes flrig, pre-fills callsign and P2P park). Distance from your park shown per spot. Worked activators shown in green.

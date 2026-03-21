@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -103,6 +104,21 @@ class ParkDb:
     @property
     def count(self) -> int:
         return len(self._parks)
+
+    @property
+    def db_updated(self) -> str | None:
+        """Return the CSV last-modified date as 'YYYY-MM-DD', or None if not downloaded."""
+        if not PARKS_CSV.exists():
+            return None
+        mtime = PARKS_CSV.stat().st_mtime
+        return datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%d")
+
+    @property
+    def db_age_days(self) -> int | None:
+        """Return age of the CSV in whole days, or None if not downloaded."""
+        if not PARKS_CSV.exists():
+            return None
+        return int((time.time() - PARKS_CSV.stat().st_mtime) / 86400)
 
     def needs_download(self) -> bool:
         """True if the CSV has never been downloaded."""
