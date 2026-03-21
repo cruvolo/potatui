@@ -28,6 +28,7 @@ from potatui.adif import append_qso_adif, freq_to_band, session_file_stem, write
 from potatui.config import Config
 from potatui.flrig import FlrigClient
 from potatui.screens.logger_modals import (
+    AboutModal,
     ChangeOperatorModal,
     ConfirmModal,
     EditQSOModal,
@@ -79,6 +80,7 @@ def _shift_status(lon: float, utc_now: datetime) -> str | None:
 
 class LoggerScreen(Screen):
     BINDINGS = [
+        Binding("f1", "about", "About", show=False),
         Binding("f2", "set_freq", "Set Run Freq"),
         Binding("f3", "mode_picker", "Mode"),
         Binding("f4", "edit_last_qso", "Edit QSO"),
@@ -1203,6 +1205,9 @@ class LoggerScreen(Screen):
     # ------------------------------------------------------------------
     # Actions
     # ------------------------------------------------------------------
+
+    def action_about(self) -> None:
+        self.app.push_screen(AboutModal())
 
     def action_set_freq(self) -> None:
         def on_result(freq: float | None) -> None:

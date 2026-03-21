@@ -1191,3 +1191,97 @@ class SolarWeatherModal(ModalScreen[None]):
     def on_key(self, event) -> None:
         if event.key == "escape":
             self.dismiss(None)
+
+
+# ---------------------------------------------------------------------------
+# About modal
+# ---------------------------------------------------------------------------
+
+_LAST_UPDATED = "2026-03-20"
+
+_ABOUT_LOGO = [
+    "██████╗  ██████╗ ████████╗ █████╗ ████████╗██╗   ██╗██╗",
+    "██╔══██╗██╔═══██╗╚══██╔══╝██╔══██╗╚══██╔══╝██║   ██║██║",
+    "██████╔╝██║   ██║   ██║   ███████║   ██║   ██║   ██║██║",
+    "██╔═══╝ ██║   ██║   ██║   ██╔══██║   ██║   ██║   ██║██║",
+    "██║     ╚██████╔╝   ██║   ██║  ██║   ██║   ╚██████╔╝██║",
+    "╚═╝      ╚═════╝    ╚═╝   ╚═╝  ╚═╝   ╚═╝    ╚═════╝ ╚═╝",
+]
+_ABOUT_SUBTITLE = "P a r k s  O n  T h e  A i r  ·  T U I  L o g g e r"
+
+
+class AboutModal(ModalScreen[None]):
+    """About screen — F1."""
+
+    CSS = """
+    AboutModal {
+        align: center middle;
+    }
+    #about-box {
+        width: 64;
+        height: auto;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    #about-logo {
+        text-align: center;
+        color: $primary;
+        margin-bottom: 0;
+    }
+    #about-subtitle {
+        text-align: center;
+        color: $text-muted;
+        text-style: italic;
+        margin-bottom: 1;
+    }
+    #about-rule {
+        margin: 1 0;
+        color: $primary-darken-2;
+    }
+    #about-body {
+        text-align: center;
+        height: auto;
+        margin-bottom: 0;
+    }
+    #about-meta {
+        text-align: center;
+        color: $text-muted;
+        margin-top: 1;
+        height: auto;
+    }
+    #about-btn-row {
+        align: center middle;
+        height: auto;
+        margin-top: 1;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        logo_text = "\n".join(_ABOUT_LOGO)
+        with Container(id="about-box"):
+            yield Static(logo_text, id="about-logo")
+            yield Static(_ABOUT_SUBTITLE, id="about-subtitle")
+            yield Rule(id="about-rule")
+            yield Static(
+                "Created by [bold]NV3Y[/bold] with help from [bold]Claude[/bold] (Anthropic)\n"
+                "Licensed under CC BY-NC-SA 4.0",
+                id="about-body",
+            )
+            yield Static(
+                f"Last updated: {_LAST_UPDATED}",
+                id="about-meta",
+            )
+            with Horizontal(id="about-btn-row"):
+                yield Button("Close", variant="primary", id="about-close")
+
+    def on_mount(self) -> None:
+        self.query_one("#about-close", Button).focus()
+
+    @on(Button.Pressed, "#about-close")
+    def on_close(self) -> None:
+        self.dismiss(None)
+
+    def on_key(self, event) -> None:
+        if event.key in ("escape", "f1"):
+            self.dismiss(None)
