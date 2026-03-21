@@ -33,7 +33,7 @@ BAND_FILTER_OPTIONS = [("All", "All"), ("160m", "160m"), ("80m", "80m"),
                        ("20m", "20m"), ("17m", "17m"), ("15m", "15m"),
                        ("12m", "12m"), ("10m", "10m"), ("6m", "6m"), ("2m", "2m")]
 MODE_FILTER_OPTIONS = [("All", "All"), ("SSB", "SSB"), ("CW", "CW"),
-                       ("FT8", "FT8"), ("FT4", "FT4"), ("FM", "FM"), ("AM", "AM")]
+                       ("FM", "FM"), ("AM", "AM")]
 SORT_OPTIONS = [("Distance", "distance"), ("Age", "age"), ("Frequency", "freq")]
 
 
@@ -74,6 +74,7 @@ class SpotsScreen(Screen):
     _saved_qrt: bool = True
     _saved_qsy: bool = False
     _saved_worked: bool = True
+    _saved_hide_digi: bool = True
     _saved_search: str = ""
 
     CSS = """
@@ -218,6 +219,7 @@ class SpotsScreen(Screen):
             yield Checkbox("QRT", value=SpotsScreen._saved_qrt, id="qrt-filter")
             yield Checkbox("QSY", value=SpotsScreen._saved_qsy, id="qsy-filter")
             yield Checkbox("Worked", value=SpotsScreen._saved_worked, id="worked-filter")
+            yield Checkbox("FT8/FT4", value=SpotsScreen._saved_hide_digi, id="digi-filter")
 
         with Horizontal(id="search-bar"):
             yield Label("Search:", classes="search-label")
@@ -355,6 +357,7 @@ class SpotsScreen(Screen):
         qrt_filt = self.query_one("#qrt-filter", Checkbox).value
         qsy_filt = self.query_one("#qsy-filter", Checkbox).value
         worked_filt = self.query_one("#worked-filter", Checkbox).value
+        hide_digi = self.query_one("#digi-filter", Checkbox).value
 
         band_filter = str(band_sel.value) if band_sel.value != Select.BLANK else "All"
         mode_filter = str(mode_sel.value) if mode_sel.value != Select.BLANK else "All"
@@ -367,12 +370,13 @@ class SpotsScreen(Screen):
         SpotsScreen._saved_qrt = qrt_filt
         SpotsScreen._saved_qsy = qsy_filt
         SpotsScreen._saved_worked = worked_filt
+        SpotsScreen._saved_hide_digi = hide_digi
 
         filtered = self._spots
         if band_filter != "All":
             filtered = [s for s in filtered if s.band == band_filter]
         if mode_filter != "All":
-            filtered = [s for s in filtered if s.mode.upper() == mode_filter.upper()]
+            filtered = [s for s in filtered if not s.mode or s.mode.upper() == mode_filter.upper()]
         if qsy_filt:
             filtered = [s for s in filtered if "QSY".casefold() not in s.comments.casefold()]
         if qrt_filt:
@@ -380,6 +384,8 @@ class SpotsScreen(Screen):
         if worked_filt:
             worked = self._worked_callsigns()
             filtered = [s for s in filtered if s.activator.upper() not in worked]
+        if hide_digi:
+            filtered = [s for s in filtered if not s.mode or s.mode.upper() not in ("FT8", "FT4")]
 
         search = SpotsScreen._saved_search.strip().casefold()
         if search:
@@ -445,6 +451,7 @@ class SpotsScreen(Screen):
     @on(Checkbox.Changed, "#qrt-filter")
     @on(Checkbox.Changed, "#qsy-filter")
     @on(Checkbox.Changed, "#worked-filter")
+    @on(Checkbox.Changed, "#digi-filter")
     def on_filter_changed(self) -> None:
         self._apply_filters()
 

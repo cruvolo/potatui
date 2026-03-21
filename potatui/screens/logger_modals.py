@@ -17,18 +17,15 @@ from potatui.adif import freq_to_band
 from potatui.session import QSO, Session
 from potatui.space_weather import SpaceWeatherData, fetch_muf
 
-MODES = ["SSB", "CW", "FT8", "FT4", "AM", "FM"]
+MODES = ["SSB", "CW", "AM", "FM"]
 
 # Full default RST values. On focus, the signal digits (after the first char)
 # are selected so the user can type to replace just that part.
-# FT8/FT4 use dB values (e.g. -10) so leave blank.
 DEFAULT_RST: dict[str, str] = {
     "SSB": "59",
     "AM": "59",
     "FM": "59",
     "CW": "599",
-    "FT8": "",
-    "FT4": "",
 }
 
 
