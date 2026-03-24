@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import csv
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -111,7 +111,7 @@ class ParkDb:
         if not PARKS_CSV.exists():
             return None
         mtime = PARKS_CSV.stat().st_mtime
-        return datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%d")
+        return datetime.fromtimestamp(mtime, tz=UTC).strftime("%Y-%m-%d")
 
     @property
     def db_age_days(self) -> int | None:

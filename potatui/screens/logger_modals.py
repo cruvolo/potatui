@@ -6,15 +6,24 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta
-
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from textual import on, work
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, Input, Label, ListItem, ListView, Rule, Select, Static
+from textual.widgets import (
+    Button,
+    DataTable,
+    Input,
+    Label,
+    ListItem,
+    ListView,
+    Rule,
+    Select,
+    Static,
+)
 
 from potatui.adif import freq_to_band
 from potatui.park_db import park_db
@@ -1582,7 +1591,7 @@ class AboutModal(ModalScreen[None]):
     def on_db_btn(self) -> None:
         from potatui.screens.park_update import ParkDbModal
 
-        def _after_update(downloaded: bool) -> None:
+        def _after_update(downloaded: bool | None) -> None:
             if downloaded:
                 park_db.load()
                 new_date = park_db.db_updated or "not downloaded"

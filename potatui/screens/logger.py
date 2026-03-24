@@ -125,8 +125,8 @@ class LoggerScreen(Screen):
         from potatui.commands import CommandConfig, load_commands
         legacy_vk = [config.vk1, config.vk2, config.vk3, config.vk4, config.vk5]
         self._cmd_config: CommandConfig = load_commands(legacy_vk)
-        from potatui.qrz import QRZClient
         from potatui.hamdb import HamDbClient
+        from potatui.qrz import QRZClient
         self._qrz = QRZClient(config.qrz_username, config.qrz_password, config.qrz_api_url)
         self._hamdb = HamDbClient()
         self._park_latlon: tuple[float, float] | None = None

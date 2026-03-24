@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import urllib.parse
+from typing import Any
 
 # Cache results so repeated triggers in the same session skip the network call.
 # Key: (lat rounded to 2dp, lon rounded to 2dp)  Value: (address, dist_km) | None
@@ -29,10 +30,8 @@ _NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse"
 _UA = "Potatui/1.0 (https://github.com/MonkeybutlerCJH/potatui)"
 
 
-async def _overpass_get(client: object, query: str) -> dict:
+async def _overpass_get(client: object, query: str) -> dict[str, Any]:
     """GET the Overpass interpreter, retrying once on 504."""
-    import httpx
-
     url = _OVERPASS_URL + "?data=" + urllib.parse.quote(query)
     resp = await client.get(url)  # type: ignore[attr-defined]
     if resp.status_code == 429:
@@ -41,7 +40,8 @@ async def _overpass_get(client: object, query: str) -> dict:
         await asyncio.sleep(3)
         resp = await client.get(url)  # type: ignore[attr-defined]
     resp.raise_for_status()
-    return resp.json()
+    result: dict[str, Any] = resp.json()
+    return result
 
 
 async def _nominatim_city(client: object, lat: float, lon: float) -> str:
@@ -58,7 +58,7 @@ async def _nominatim_city(client: object, lat: float, lon: float) -> str:
         state = addr.get("state", "")
         if city and state:
             return f"{city}, {state}"
-        return city or state
+        return str(city or state)
     except Exception:
         return ""
 
@@ -73,6 +73,7 @@ async def find_nearest_wawa_osm(
     failure from "not found".
     """
     import httpx
+
     from potatui.qrz import haversine_km
 
     cache_key = (round(lat, 2), round(lon, 2))
