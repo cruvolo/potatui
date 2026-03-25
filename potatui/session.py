@@ -26,6 +26,8 @@ class QSO:
     is_p2p: bool = False
     p2p_ref: str = ""
     operator: str = ""
+    contact_grid: str = ""
+    distance_km: float | None = None
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -38,6 +40,8 @@ class QSO:
         d["timestamp_utc"] = datetime.fromisoformat(d["timestamp_utc"])
         d.setdefault("state", "")
         d.setdefault("operator", "")
+        d.setdefault("contact_grid", "")
+        d.setdefault("distance_km", None)
         return cls(**d)
 
 
@@ -76,6 +80,8 @@ class Session:
         is_p2p: bool = False,
         p2p_ref: str = "",
         operator: str = "",
+        contact_grid: str = "",
+        distance_km: float | None = None,
     ) -> QSO:
         qso = QSO(
             qso_id=self._next_id,
@@ -92,6 +98,8 @@ class Session:
             is_p2p=is_p2p,
             p2p_ref=p2p_ref,
             operator=operator,
+            contact_grid=contact_grid,
+            distance_km=distance_km,
         )
         self._next_id += 1
         self.qsos.append(qso)

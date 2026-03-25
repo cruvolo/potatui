@@ -104,6 +104,8 @@ def _qso_to_adif(
         parts.append(_field("SIG", "POTA"))
         parts.append(_field("SIG_INFO", qso.p2p_ref))
         parts.append(_field("POTA_REF", qso.p2p_ref))
+    if qso.contact_grid:
+        parts.append(_field("GRIDSQUARE", qso.contact_grid.upper()))
 
     return " ".join(parts) + " <EOR>\n"
 

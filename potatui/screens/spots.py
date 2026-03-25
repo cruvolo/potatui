@@ -26,6 +26,7 @@ from textual.widgets import (
 from potatui.config import Config
 from potatui.flrig import FlrigClient
 from potatui.pota_api import Spot, fetch_spots
+from potatui.propagation import PropProfile, PropScore, score_spot
 from potatui.session import Session
 
 BAND_FILTER_OPTIONS = [("All", "All"), ("160m", "160m"), ("80m", "80m"),
@@ -34,7 +35,16 @@ BAND_FILTER_OPTIONS = [("All", "All"), ("160m", "160m"), ("80m", "80m"),
                        ("12m", "12m"), ("10m", "10m"), ("6m", "6m"), ("2m", "2m")]
 MODE_FILTER_OPTIONS = [("All", "All"), ("SSB", "SSB"), ("CW", "CW"),
                        ("FM", "FM"), ("AM", "AM")]
-SORT_OPTIONS = [("Distance", "distance"), ("Age", "age"), ("Frequency", "freq")]
+SORT_OPTIONS = [("Propagation", "prop"), ("Distance", "distance"), ("Age", "age"), ("Frequency", "freq")]
+
+_PROP_CELLS: dict[PropScore, Text] = {
+    PropScore.HIGH:    Text("●", style="bold green"),
+    PropScore.MEDIUM:  Text("◐", style="yellow"),
+    PropScore.LOW:     Text("○", style="red"),
+    PropScore.UNKNOWN: Text("·", style="dim"),
+}
+
+_PROP_SORT_ORDER = {PropScore.HIGH: 0, PropScore.MEDIUM: 1, PropScore.LOW: 2, PropScore.UNKNOWN: 3}
 
 
 def _spot_age_minutes(spot_time_str: str) -> int:
@@ -63,6 +73,8 @@ class SpotsScreen(Screen):
         Binding("F", "toggle_filters", show=False),
         Binding("ctrl+f", "toggle_search", "Search"),
         Binding("r", "refresh", "Refresh"),
+        Binding("p", "toggle_prop", "Prop"),
+        Binding("P", "toggle_prop", show=False),
         Binding("escape", "go_back", "Back"),
         Binding("f5", "go_back", "Back"),
     ]
@@ -76,6 +88,7 @@ class SpotsScreen(Screen):
     _saved_worked: bool = True
     _saved_hide_digi: bool = True
     _saved_search: str = ""
+    _saved_prop_enabled: bool = False
 
     CSS = """
     SpotsScreen {
@@ -192,6 +205,7 @@ class SpotsScreen(Screen):
         park_latlon: tuple[float, float] | None = None,
         session: Session | None = None,
         offline: bool = False,
+        prop_profile: PropProfile | None = None,
     ) -> None:
         super().__init__()
         self.config = config
@@ -199,6 +213,8 @@ class SpotsScreen(Screen):
         self._park_latlon = park_latlon
         self._session = session
         self._offline = offline
+        self._prop_profile = prop_profile
+        self._prop_enabled: bool = SpotsScreen._saved_prop_enabled
         self._spots: list[Spot] = []
         self._filtered: list[Spot] = []
         self._park_grid_cache: dict[str, str] = {}  # ref → grid6 from park_db or API
@@ -234,14 +250,9 @@ class SpotsScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:
-        table = self.query_one("#spots-table", DataTable)
-        table.add_columns(
-            "Activator", "Park", "Park Name", "Freq", "Band",
-            "Mode", "State", "Dist", "Age", "Comments"
-        )
         if SpotsScreen._saved_search:
             self.query_one("#search-bar").add_class("visible")
-        table.focus()
+        self.query_one("#spots-table", DataTable).focus()
         self._do_refresh()
         self.set_interval(60.0, self._do_refresh)
 
@@ -272,6 +283,13 @@ class SpotsScreen(Screen):
         inp.value = ""
         SpotsScreen._saved_search = ""
         self._apply_filters()
+
+    def action_toggle_prop(self) -> None:
+        self._prop_enabled = not self._prop_enabled
+        SpotsScreen._saved_prop_enabled = self._prop_enabled
+        label = "on" if self._prop_enabled else "off"
+        self.notify(f"Propagation indicators {label}", timeout=2)
+        self._rebuild_table()
 
     def action_go_back(self) -> None:
         search_bar = self.query_one("#search-bar")
@@ -398,8 +416,16 @@ class SpotsScreen(Screen):
             ]
 
         # Sort
-        if sort_by == "distance":
-            # Spots with known distance first (ascending), then unknowns
+        if sort_by == "prop" and self._prop_enabled and self._prop_profile is not None:
+            _profile = self._prop_profile
+            def prop_key(s: Spot) -> tuple:
+                dist_km = self._dist_km(s)
+                pscore = score_spot(_profile, s.frequency, dist_km)
+                order = _PROP_SORT_ORDER[pscore]
+                return (order, dist_km if dist_km is not None else float("inf"))
+            filtered = sorted(filtered, key=prop_key)
+        elif sort_by == "distance" or sort_by == "prop":
+            # Fallback to distance if prop not enabled or profile missing
             def dist_key(s: Spot) -> tuple:
                 km = self._dist_km(s)
                 return (1, 0.0) if km is None else (0, km)
@@ -422,7 +448,17 @@ class SpotsScreen(Screen):
 
     def _rebuild_table(self) -> None:
         table = self.query_one("#spots-table", DataTable)
-        table.clear()
+        table.clear(columns=True)
+        if self._prop_enabled:
+            table.add_columns(
+                "Activator", "Park", "Park Name", "Freq", "Band",
+                "Mode", "State", "Dist", "Prop", "Age", "Comments"
+            )
+        else:
+            table.add_columns(
+                "Activator", "Park", "Park Name", "Freq", "Band",
+                "Mode", "State", "Dist", "Age", "Comments"
+            )
         worked = self._worked_callsigns()
         for spot in self._filtered:
             age = _spot_age_minutes(spot.spot_time)
@@ -431,19 +467,42 @@ class SpotsScreen(Screen):
                 activator_cell = Text(f"✓ {spot.activator}", style="bold green")
             else:
                 activator_cell = Text(spot.activator)
-            table.add_row(
-                activator_cell,
-                spot.reference,
-                spot.park_name[:22] if spot.park_name else "",
-                f"{spot.frequency:.1f}",
-                spot.band,
-                spot.mode,
-                spot.location,
-                self._dist_str(spot),
-                str(age),
-                spot.comments[:28] if spot.comments else "",
-                key=f"{spot.activator}-{spot.reference}-{spot.frequency}",
-            )
+            if self._prop_enabled:
+                dist_km = self._dist_km(spot)
+                pscore = (
+                    score_spot(self._prop_profile, spot.frequency, dist_km)
+                    if self._prop_profile is not None
+                    else PropScore.UNKNOWN
+                )
+                prop_cell = Text(_PROP_CELLS[pscore].plain, style=_PROP_CELLS[pscore].style)
+                table.add_row(
+                    activator_cell,
+                    spot.reference,
+                    spot.park_name[:22] if spot.park_name else "",
+                    f"{spot.frequency:.1f}",
+                    spot.band,
+                    spot.mode,
+                    spot.location,
+                    self._dist_str(spot),
+                    prop_cell,
+                    str(age),
+                    spot.comments[:28] if spot.comments else "",
+                    key=f"{spot.activator}-{spot.reference}-{spot.frequency}",
+                )
+            else:
+                table.add_row(
+                    activator_cell,
+                    spot.reference,
+                    spot.park_name[:22] if spot.park_name else "",
+                    f"{spot.frequency:.1f}",
+                    spot.band,
+                    spot.mode,
+                    spot.location,
+                    self._dist_str(spot),
+                    str(age),
+                    spot.comments[:28] if spot.comments else "",
+                    key=f"{spot.activator}-{spot.reference}-{spot.frequency}",
+                )
 
     @on(Select.Changed, "#band-filter")
     @on(Select.Changed, "#mode-filter")

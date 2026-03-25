@@ -27,6 +27,7 @@ from textual.widgets._input import Selection
 from potatui.adif import append_qso_adif, freq_to_band, session_file_stem, write_adif
 from potatui.config import Config
 from potatui.flrig import FlrigClient
+from potatui.propagation import PropProfile
 from potatui.screens.logger_modals import (
     AboutModal,
     ChangeOperatorModal,
@@ -45,7 +46,13 @@ from potatui.screens.logger_modals import (
     _rst_default,
 )
 from potatui.session import QSO, Session
-from potatui.space_weather import SpaceWeatherData, fetch_space_weather, kp_severity, kp_traditional
+from potatui.space_weather import (
+    SpaceWeatherData,
+    fetch_muf,
+    fetch_space_weather,
+    kp_severity,
+    kp_traditional,
+)
 
 # ---------------------------------------------------------------------------
 # Shift helpers
@@ -137,6 +144,8 @@ class LoggerScreen(Screen):
         self._qrz_filled_state: bool = False  # True if #f-state was auto-filled by QRZ
         self._p2p_last_value: str = ""        # Previous P2P field value for auto-fill guard
         self._qrz_bars: dict[str, Static] = {}  # callsign → QRZ info bar widget
+        self._qrz_contact_info: dict[str, tuple[str, float | None]] = {}  # callsign → (grid, dist_km)
+        self._prop_profile: PropProfile = PropProfile()
         self._celebrated_100: bool = False  # fire rainbow only once per session
         self._table_focused: bool = False  # True when QSO table has focus
         self._solar_data: SpaceWeatherData | None = None
@@ -235,6 +244,10 @@ class LoggerScreen(Screen):
 
     def on_mount(self) -> None:
         self._setup_table()
+        # Seed prop profile from any existing QSOs (resumed session)
+        for qso in self.session.qsos:
+            if qso.distance_km is not None:
+                self._prop_profile.add_qso(qso.band, qso.distance_km)
         if self.session.qsos:
             self._rebuild_table()
         self._update_header()
@@ -302,6 +315,10 @@ class LoggerScreen(Screen):
         if self._shift_lon is None and self._park_latlon is not None:
             self._shift_lon = self._park_latlon[1]
         self._update_shift_indicator()
+        # Kick off MUF fetch now that we have coordinates (the space-weather poll
+        # may have already fired before _park_latlon was resolved)
+        if self._park_latlon is not None and not self._offline:
+            self._poll_space_weather()
 
     def _setup_table(self) -> None:
         table = self.query_one("#qso-table", DataTable)
@@ -608,6 +625,14 @@ class LoggerScreen(Screen):
         self._solar_data = data
         self._update_solar_indicator()
         self._check_solar_alerts(data)
+        # Also fetch MUF for propagation scoring (cached, 15-min rate limit respected)
+        if self._park_latlon is not None:
+            try:
+                muf = await fetch_muf(self._park_latlon[0], self._park_latlon[1])
+                self._prop_profile.fof2_mhz = muf.fof2
+                self._prop_profile.muf_mhz = muf.mufd
+            except Exception:
+                pass
 
     def _update_solar_indicator(self) -> None:
         try:
@@ -812,10 +837,16 @@ class LoggerScreen(Screen):
             state = user_state or (info.state if info else "") or ""
             return name, state
 
+        def _contact_location(callsign: str) -> tuple[str, float | None]:
+            """Return (grid, distance_km) from cached QRZ lookup, if available."""
+            key = callsign.upper().split("/")[0]
+            return self._qrz_contact_info.get(key, ("", None))
+
         new_qsos: list[QSO] = []
         if p2p_refs:
             for callsign in callsigns:
                 name, state = await _resolve_name_state(callsign)
+                grid, dist_km = _contact_location(callsign)
                 for ref in p2p_refs:
                     new_qsos.append(self.session.add_qso(
                         callsign=callsign,
@@ -830,10 +861,13 @@ class LoggerScreen(Screen):
                         is_p2p=True,
                         p2p_ref=ref,
                         operator=self.session.operator,
+                        contact_grid=grid,
+                        distance_km=dist_km,
                     ))
         else:
             for callsign in callsigns:
                 name, state = await _resolve_name_state(callsign)
+                grid, dist_km = _contact_location(callsign)
                 new_qsos.append(self.session.add_qso(
                     callsign=callsign,
                     rst_sent=rst_sent,
@@ -847,7 +881,14 @@ class LoggerScreen(Screen):
                     is_p2p=False,
                     p2p_ref="",
                     operator=self.session.operator,
+                    contact_grid=grid,
+                    distance_km=dist_km,
                 ))
+
+        # Update propagation profile with new QSO distances
+        for qso in new_qsos:
+            if qso.distance_km is not None:
+                self._prop_profile.add_qso(qso.band, qso.distance_km)
 
         # Rebuild table so newest QSO(s) appear at top
         self._rebuild_table()
@@ -1055,6 +1096,9 @@ class LoggerScreen(Screen):
             dist_str = self.format_dist_bearing(dist_km, brg)
             parts.append(dist_str)
 
+        # Cache grid and distance for use at log time
+        self._qrz_contact_info[callsign] = (info.grid or "", dist_km)
+
         bar.set_classes("qrz-info-bar")
         bar.update("  ·  ".join(parts))
         self._update_qrz_indicator()
@@ -1063,6 +1107,7 @@ class LoggerScreen(Screen):
         for bar in list(self._qrz_bars.values()):
             bar.remove()
         self._qrz_bars.clear()
+        self._qrz_contact_info.clear()
 
     @on(Input.Changed, "#f-freq")
     def on_freq_changed(self, event: Input.Changed) -> None:
@@ -1382,6 +1427,7 @@ class LoggerScreen(Screen):
                 park_latlon=self._park_latlon,
                 session=self.session,
                 offline=self._offline,
+                prop_profile=self._prop_profile,
             )
         )
 
