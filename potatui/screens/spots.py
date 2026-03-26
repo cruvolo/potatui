@@ -448,17 +448,25 @@ class SpotsScreen(Screen):
 
     def _rebuild_table(self) -> None:
         table = self.query_one("#spots-table", DataTable)
-        table.clear(columns=True)
-        if self._prop_enabled:
-            table.add_columns(
-                "Activator", "Park", "Park Name", "Freq", "Band",
-                "Mode", "State", "Dist", "Prop", "Age", "Comments"
-            )
+        # Only reset columns when the structure actually changes (prop toggle or first build).
+        # Preserving column objects keeps their content_width intact, avoiding the render
+        # cycle where _update_dimensions() defers width recalc to _on_idle without a
+        # follow-up refresh — which caused truncation until a mouse event triggered one.
+        expected_col_count = 11 if self._prop_enabled else 10
+        if len(table.columns) != expected_col_count:
+            table.clear(columns=True)
+            if self._prop_enabled:
+                table.add_columns(
+                    "Activator", "Park", "Park Name", "Freq", "Band",
+                    "Mode", "State", "Dist", "Prop", "Age", "Comments"
+                )
+            else:
+                table.add_columns(
+                    "Activator", "Park", "Park Name", "Freq", "Band",
+                    "Mode", "State", "Dist", "Age", "Comments"
+                )
         else:
-            table.add_columns(
-                "Activator", "Park", "Park Name", "Freq", "Band",
-                "Mode", "State", "Dist", "Age", "Comments"
-            )
+            table.clear()  # Keep columns and their content_width values
         worked = self._worked_callsigns()
         for spot in self._filtered:
             age = _spot_age_minutes(spot.spot_time)
@@ -503,6 +511,7 @@ class SpotsScreen(Screen):
                     spot.comments[:28] if spot.comments else "",
                     key=f"{spot.activator}-{spot.reference}-{spot.frequency}",
                 )
+        table.refresh(layout=True)
 
     @on(Select.Changed, "#band-filter")
     @on(Select.Changed, "#mode-filter")
