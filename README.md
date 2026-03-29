@@ -15,7 +15,7 @@ A terminal user interface (TUI) for logging Parks on the Air (POTA) activations.
 - **POTA spots browser** — live spot list with band/mode/sort/search filters, auto-refreshes every 60 seconds. QSY directly to a spot with one keypress (tunes flrig, pre-fills callsign and P2P park). Distance from your park shown per spot. Worked activators shown in green.
 - **Self-spotting** — post yourself to the POTA network from within the app. Your most recent spot is displayed live on the logging screen, showing who spotted you, how long ago, and any comments — colour-coded green/yellow/grey by age.
 - **Offline park database** — a local copy of the full POTA parks list is downloaded on first launch and refreshed every 30 days. Park lookups work even without internet. Toggle full offline mode with Ctrl+N.
-- **Solar/space weather indicator** — live NOAA Kp geomagnetic index shown in the header. Flashes red and fires a warning toast when a geomagnetic storm alert is active. Click the pill to see the last 24h Kp history, a 3-day Kp forecast (colour-coded by severity), full alert text, and MUF/foF2 propagation prediction for your park's grid square (via [prop.kc2g.com](https://prop.kc2g.com/)). Polls every 10 minutes; skipped in offline mode.
+- **Solar/space weather indicator** — live NOAA Kp geomagnetic index shown in the header. Flashes red and fires a warning toast when any active space weather alert is issued. Click the pill to see the last 24h Kp history, a 3-day Kp forecast (colour-coded by severity), full alert text, and MUF/foF2 propagation prediction for your park's grid square (via [prop.kc2g.com](https://prop.kc2g.com/)). Polls every 10 minutes; skipped in offline mode.
 - **Commander** — fire CAT commands or run console commands via configurable slots with custom labels and keyboard shortcuts. Open the full panel with F7.
 - **Resume activations** — on launch, pick any previous session to continue from where you left off.
 - **ADIF export** — every QSO is appended to an ADIF file immediately. Full rewrite on edit, delete, or session end. Ready to upload to pota.app.
@@ -223,7 +223,7 @@ W1AW | US-1234 Gifford Pinchot NF | 14:32z | 14225.0 kHz  20M  SSB | ● QSOs: 4
 - QSO count turns green and shows `✓` once you reach 10 contacts for a valid activation.
 - At 100 QSOs, a rainbow border animation fires (once per session).
 - **`net` indicator** — shows internet connectivity status (green/red/yellow for manual offline). Click it to open a Network Status panel showing the state of all services (POTA API, QRZ, HamDB, flrig, NOAA). From that panel, click the flrig or QRZ row to drill into their connection logs.
-- **Solar/Kp indicator** shows the current NOAA planetary K-index: green (normal, Kp < 5), yellow (elevated, Kp 5–6), red (storm, Kp ≥ 7). Flashes red when a geomagnetic storm alert is active and fires a warning toast for each new alert (looks back 24 hours on startup). Click to open a detail modal with the last 24h Kp history, a 3-day Kp forecast with colour-coded bar graphs, alert text, and a propagation block showing the MUF (maximum usable frequency) and foF2 (F2 layer critical frequency) for your park's grid square, sourced from [prop.kc2g.com](https://prop.kc2g.com/). Shows `K:?` until the first successful poll.
+- **Solar/Kp indicator** shows the current NOAA planetary K-index: green (normal, Kp < 5), yellow (elevated, Kp 5–6), red (storm, Kp ≥ 7). Flashes red when any active space weather alert is present and fires a warning toast for each new alert (looks back 8 hours on startup). Click to open a detail modal with the last 24h Kp history, a 3-day Kp forecast with colour-coded bar graphs, alert text, and a propagation block showing the MUF (maximum usable frequency) and foF2 (F2 layer critical frequency) for your park's grid square, sourced from [prop.kc2g.com](https://prop.kc2g.com/). Shows `K:?` until the first successful poll.
 - **Early/Late Shift indicator** — shows 🌅 or 🌙 in the header when you're within a POTA Early Shift (6-hour window) or Late Shift (8-hour window) for your park. Click the emoji to see the exact UTC window. For multi-state parks, uses the official POTA state/province pin per the award rules.
 - When station callsign and operator callsign differ (after a Ctrl+O operator change), both are shown: `W1AW / NV3Y`.
 
@@ -231,6 +231,7 @@ W1AW | US-1234 Gifford Pinchot NF | 14:32z | 14225.0 kHz  20M  SSB | ● QSOs: 4
 
 | Key        | Action                                                         |
 |------------|----------------------------------------------------------------|
+| F1         | About screen — app info and park database status/refresh       |
 | F2         | Set run/CQ frequency — tunes flrig if connected                |
 | F3         | Mode picker popup (SSB / CW / FT8 / FT4 / AM / FM)            |
 | F4         | Toggle between QSO table and entry form                        |
@@ -271,12 +272,13 @@ Press **Ctrl+O** to open the operator change dialog. The new callsign is used fo
 - Pulls live activator spots from the POTA API, refreshes every 60 seconds.
 - The filter bar is hidden by default — press `f` to toggle it.
 - Filter by band or mode using the dropdowns at the top.
-- Sort by **Distance** from your park, **Age** (newest first), or **Frequency**.
+- Sort by **Propagation**, **Distance** from your park, **Age** (newest first), or **Frequency**.
 - Check **QRT** / **QSY** to hide spots with those comments in the spot text (both on by default).
 - Check **Worked** to hide activators you've already logged this session.
 - Press **Ctrl+F** to open a search bar and filter by callsign, park ref, or frequency.
 - Distance is measured from your **park's location** (looked up on startup).
 - Activators you've already worked this session are shown in **bold green**.
+- Press `p` to toggle the **Propagation** column, which scores each spot's contact likelihood based on your session's QSO distances and current ionospheric conditions (MUF/foF2): `●` green = HIGH, `◐` yellow = MEDIUM, `○` red = LOW, `·` = unknown.
 - Filter, sort, and search selections are remembered when you return to the screen.
 - Press `r` to manually refresh.
 - Highlight a spot and press **Enter** to QSY: tunes flrig if connected, pre-fills the callsign and P2P park fields back on the logger screen.
