@@ -9,7 +9,7 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from textual import on, work
+from textual import events, on, work
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical, VerticalScroll
 from textual.screen import ModalScreen
@@ -656,12 +656,18 @@ class NetworkStatusSnapshot:
 
     qrz_status: str  # "unconfigured" | "pending" | "ok" | "error"
     qrz_errors: list[str]
+    qrz_full_log: list[str]
 
     hamdb_errors: list[str]
     hamdb_used: bool
 
     flrig_url: str
     flrig_online: bool
+    flrig_freq_khz: float
+    flrig_band: str
+    flrig_mode: str
+    flrig_state_log: list[str]
+    flrig_detail_log: list[str]
 
     noaa_ok: bool
     noaa_loaded: bool
@@ -753,6 +759,13 @@ class NetworkStatusModal(ModalScreen[None]):
     }
     #net-errors-scroll { height: 8; }
     #net-status-close { height: auto; align: right middle; margin-top: 1; }
+    #net-svc-flrig, #net-svc-qrz {
+        width: 1fr;
+        height: 1;
+    }
+    #net-svc-flrig:hover, #net-svc-qrz:hover {
+        background: $primary-darken-1;
+    }
     """
 
     def __init__(self, snapshot: NetworkStatusSnapshot) -> None:
@@ -785,17 +798,20 @@ class NetworkStatusModal(ModalScreen[None]):
                 if s.offline_manual:
                     yield Static("[dim]○[/dim]  POTA API  [dim]Paused[/dim]")
                     yield Static(_net_svc_qrz(s.qrz_status) if s.qrz_status == "unconfigured"
-                                 else "[dim]○[/dim]  QRZ API  [dim]Paused[/dim]")
+                                 else "[dim]○[/dim]  QRZ API  [dim]Paused[/dim]",
+                                 id="net-svc-qrz")
                     yield Static("[dim]○[/dim]  HamDB API  [dim]Paused[/dim]"
                                  if s.hamdb_used
                                  else _net_svc_hamdb(s.hamdb_errors, s.hamdb_used))
-                    yield Static(_net_svc_flrig(s.flrig_online, s.flrig_url))
+                    yield Static(_net_svc_flrig(s.flrig_online, s.flrig_url),
+                                 id="net-svc-flrig")
                     yield Static("[dim]○[/dim]  NOAA  [dim]Paused[/dim]")
                 else:
                     yield Static(_net_svc_line("POTA API", s.pota_online))
-                    yield Static(_net_svc_qrz(s.qrz_status))
+                    yield Static(_net_svc_qrz(s.qrz_status), id="net-svc-qrz")
                     yield Static(_net_svc_hamdb(s.hamdb_errors, s.hamdb_used))
-                    yield Static(_net_svc_flrig(s.flrig_online, s.flrig_url))
+                    yield Static(_net_svc_flrig(s.flrig_online, s.flrig_url),
+                                 id="net-svc-flrig")
                     yield Static(_net_svc_noaa(s.noaa_ok, s.noaa_loaded))
 
             errors: list[str] = []
@@ -812,6 +828,27 @@ class NetworkStatusModal(ModalScreen[None]):
 
             with Horizontal(id="net-status-close"):
                 yield Button("Close", variant="primary", id="net-status-btn-close")
+
+    @on(events.Click, "#net-svc-flrig")
+    def on_flrig_row_click(self) -> None:
+        s = self._snap
+        self.app.push_screen(FlrigStatusModal(
+            url=s.flrig_url,
+            online=s.flrig_online,
+            freq_khz=s.flrig_freq_khz,
+            band=s.flrig_band,
+            mode=s.flrig_mode,
+            state_log=s.flrig_state_log,
+            detail_log=s.flrig_detail_log,
+        ))
+
+    @on(events.Click, "#net-svc-qrz")
+    def on_qrz_row_click(self) -> None:
+        s = self._snap
+        if s.qrz_status == "unconfigured":
+            self.notify("QRZ not configured — add credentials in Settings (F8)", severity="warning")
+            return
+        self.app.push_screen(QrzLogModal(s.qrz_full_log))
 
     def on_mount(self) -> None:
         if not self._snap.offline_manual:
@@ -1473,7 +1510,7 @@ class SolarWeatherModal(ModalScreen[None]):
 # About modal
 # ---------------------------------------------------------------------------
 
-_LAST_UPDATED = "2026-03-28"
+_LAST_UPDATED = "2026-03-29"
 
 _ABOUT_LOGO = [
     "██████╗  ██████╗ ████████╗ █████╗ ████████╗██╗   ██╗██╗",

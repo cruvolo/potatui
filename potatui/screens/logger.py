@@ -187,10 +187,6 @@ class LoggerScreen(Screen):
             yield Static("", id="hdr-spacer")
             yield Static("net", id="hdr-net", classes="net-unknown")
             yield Static("|", classes="hdr-sep")
-            yield Static("flrig", id="hdr-flrig", classes="flrig-offline")
-            yield Static("|", classes="hdr-sep")
-            yield Static("qrz", id="hdr-qrz", classes="qrz-unconfigured")
-            yield Static("|", classes="hdr-sep")
             yield Static("K:?", id="hdr-solar", classes="solar-unknown")
             yield Static("|", id="hdr-shift-sep", classes="hdr-sep shift-inactive")
             yield Static("", id="hdr-shift", classes="shift-inactive")
@@ -353,13 +349,6 @@ class LoggerScreen(Screen):
             radio_str = f"---  {self.band}  {self.mode}"
         self.query_one("#hdr-radio", Static).update(radio_str)
 
-        flrig_widget = self.query_one("#hdr-flrig", Static)
-        if self._flrig_online:
-            flrig_widget.add_class("flrig-online")
-            flrig_widget.remove_class("flrig-offline")
-        else:
-            flrig_widget.add_class("flrig-offline")
-            flrig_widget.remove_class("flrig-online")
 
     def _update_shift_indicator(self) -> None:
         """Update the Early/Late Shift emoji indicator in the header."""
@@ -560,30 +549,7 @@ class LoggerScreen(Screen):
         self._update_radio_display()
 
     def _update_qrz_indicator(self) -> None:
-        try:
-            widget = self.query_one("#hdr-qrz", Static)
-            widget.set_classes(f"qrz-{self._qrz.status}")
-        except Exception:
-            pass
-
-    @on(events.Click, "#hdr-flrig")
-    def on_flrig_indicator_click(self) -> None:
-        self.app.push_screen(FlrigStatusModal(
-            url=self.flrig._url,
-            online=self._flrig_online,
-            freq_khz=self.freq_khz,
-            band=self.band,
-            mode=self.mode,
-            state_log=self._flrig_log,
-            detail_log=self.flrig.log,
-        ))
-
-    @on(events.Click, "#hdr-qrz")
-    def on_qrz_indicator_click(self) -> None:
-        if not self._qrz.configured:
-            self.notify("QRZ not configured — add credentials in Settings (F8)", severity="warning")
-            return
-        self.app.push_screen(QrzLogModal(self._qrz.error_log))
+        pass  # QRZ status now shown in NetworkStatusModal only
 
     @on(events.Click, "#hdr-net")
     def on_net_indicator_click(self) -> None:
@@ -593,10 +559,16 @@ class LoggerScreen(Screen):
             pota_online=not self._offline,
             qrz_status=self._qrz.status,
             qrz_errors=self._qrz.error_log[:5],
+            qrz_full_log=self._qrz.error_log,
             hamdb_errors=self._hamdb.error_log[:5],
             hamdb_used=bool(self._hamdb._cache),
             flrig_url=self.flrig._url,
             flrig_online=self._flrig_online,
+            flrig_freq_khz=self.freq_khz,
+            flrig_band=self.band,
+            flrig_mode=self.mode,
+            flrig_state_log=self._flrig_log,
+            flrig_detail_log=self.flrig.log,
             noaa_ok=not (self._solar_data.fetch_error if self._solar_data else True),
             noaa_loaded=self._solar_data is not None,
         )

@@ -32,22 +32,22 @@ LoggerScreen {
     color: $warning;
 }
 
-#hdr-net, #hdr-flrig, #hdr-qrz, #hdr-solar {
+#hdr-net, #hdr-solar {
     width: auto;
     padding: 0 1;
     color: $background;
     text-style: bold;
 }
 
-#hdr-net.net-online, #hdr-flrig.flrig-online, #hdr-qrz.qrz-ok {
+#hdr-net.net-online {
     background: $success;
 }
 
-#hdr-net.net-offline, #hdr-flrig.flrig-offline, #hdr-qrz.qrz-error {
+#hdr-net.net-offline {
     background: $error;
 }
 
-#hdr-net.net-unknown, #hdr-qrz.qrz-unconfigured, #hdr-qrz.qrz-pending {
+#hdr-net.net-unknown {
     background: $panel;
     color: $text-muted;
 }
