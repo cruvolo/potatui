@@ -22,26 +22,16 @@ PARKS_CSV = DATA_DIR / "parks.csv"
 PARKS_CSV_URL = "https://pota.app/all_parks_ext.csv"
 REFRESH_DAYS = 30
 
-# Parks that are always available regardless of the downloaded CSV.
-# US-TEST is the official POTA test park used for software testing.
-_BUILTIN_PARKS: list[dict[str, str]] = [
-    {
-        "reference": "US-TEST",
-        "name": "POTA Test Park",
-        "locationDesc": "",
-        "grid": "",
-        "latitude": "",
-        "longitude": "",
-    },
-]
-
-
 class ParkDb:
     """In-memory park database loaded from the cached CSV file."""
 
+    # Parks that are always available regardless of the downloaded CSV.
+    # K-TEST is the official POTA test park used for software testing.
+    _BUILTINS: dict[str, ParkInfo] = {}  # populated in _init_builtins()
+
     def __init__(self) -> None:
         self._parks: dict[str, ParkInfo] = {}
-        self._inject_builtins()
+        self._init_builtins()
 
     def load(self) -> None:
         """Load parks from the CSV into memory. Safe to call multiple times."""
@@ -93,56 +83,47 @@ class ParkDb:
             return
 
         self._parks = parks
-        self._inject_builtins()
 
-    def _inject_builtins(self) -> None:
-        """Add built-in parks (e.g. US-TEST) that are not in the downloaded CSV."""
+    def _init_builtins(self) -> None:
+        """Populate the class-level builtins dict once."""
+        if ParkDb._BUILTINS:
+            return
         from potatui.pota_api import ParkInfo
 
-        for row in _BUILTIN_PARKS:
-            ref = row["reference"].upper()
-            if ref not in self._parks:
-                loc_desc = row.get("locationDesc", "")
-                locations: list[str] = []
-                for part in loc_desc.split(","):
-                    part = part.strip()
-                    if "-" in part:
-                        locations.append(part.split("-", 1)[1])
-                    elif part:
-                        locations.append(part)
-                lat_s = row.get("latitude", "")
-                lon_s = row.get("longitude", "")
-                try:
-                    park_lat: float | None = float(lat_s) if lat_s else None
-                    park_lon: float | None = float(lon_s) if lon_s else None
-                except (ValueError, TypeError):
-                    park_lat, park_lon = None, None
-                self._parks[ref] = ParkInfo(
-                    reference=ref,
-                    name=row.get("name", "Unknown Park"),
-                    location=loc_desc,
-                    state=locations[0] if locations else "",
-                    grid=row.get("grid", ""),
-                    locations=locations,
-                    lat=park_lat,
-                    lon=park_lon,
-                )
+        ParkDb._BUILTINS = {
+            "K-TEST": ParkInfo(
+                reference="K-TEST",
+                name="POTA Test Park",
+                location="",
+                state="",
+                grid="",
+                locations=[],
+                lat=None,
+                lon=None,
+            ),
+        }
 
     def lookup(self, ref: str) -> ParkInfo | None:
         """Return ParkInfo for a reference, or None if not found."""
-        return self._parks.get(ref.strip().upper())
+        key = ref.strip().upper()
+        return self._parks.get(key) or ParkDb._BUILTINS.get(key)
 
     def search_parks(self, query: str, limit: int = 15) -> list[ParkInfo]:
         """Search by name substring or ref prefix (case-insensitive). Runs synchronously."""
-        if not self._parks or not query:
+        if not query:
             return []
         q = query.strip().lower()
         results: list[ParkInfo] = []
-        for park in self._parks.values():
-            if q in park.name.lower() or park.reference.lower().startswith(q):
-                results.append(park)
-                if len(results) >= limit:
-                    break
+        seen: set[str] = set()
+        for source in (self._parks, ParkDb._BUILTINS):
+            for park in source.values():
+                if park.reference in seen:
+                    continue
+                if q in park.name.lower() or park.reference.lower().startswith(q):
+                    results.append(park)
+                    seen.add(park.reference)
+                    if len(results) >= limit:
+                        return results
         return results
 
     @property
