@@ -874,7 +874,9 @@ class LoggerScreen(Screen):
         assert isinstance(event.widget, Input)
         inp = event.widget
         val = inp.value
-        if len(val) > 1:
+        if len(val) == 3:
+            inp.selection = Selection(0, 2)
+        elif len(val) > 1:
             inp.selection = Selection(1, len(val))
 
     def check_action(self, action: str, parameters: tuple) -> bool:
