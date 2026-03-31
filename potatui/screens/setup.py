@@ -369,7 +369,7 @@ class SetupScreen(Screen):
         refs = [r.strip().upper() for r in park_refs_raw.split(",") if r.strip()]
         for ref in refs:
             if not is_valid_park_ref(ref):
-                error.update(f"Invalid park reference: {ref}  (expected format: US-1234)")
+                error.update(f"Invalid park reference: {ref}  (expected format: XX-1234 or K-TEST)")
                 return
 
         try:

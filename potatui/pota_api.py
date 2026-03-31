@@ -11,7 +11,7 @@ from typing import Any
 
 import httpx
 
-PARK_REF_RE = re.compile(r"^[A-Z]{1,4}-\d{1,6}$", re.IGNORECASE)
+PARK_REF_RE = re.compile(r"^[A-Z]{1,4}-[A-Z0-9]{1,6}$", re.IGNORECASE)
 
 
 @dataclass
