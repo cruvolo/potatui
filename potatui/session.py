@@ -82,10 +82,11 @@ class Session:
         operator: str = "",
         contact_grid: str = "",
         distance_km: float | None = None,
+        timestamp_utc: datetime | None = None,
     ) -> QSO:
         qso = QSO(
             qso_id=self._next_id,
-            timestamp_utc=datetime.utcnow(),
+            timestamp_utc=timestamp_utc or datetime.utcnow(),
             callsign=callsign.upper(),
             rst_sent=rst_sent,
             rst_rcvd=rst_rcvd,

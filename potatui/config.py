@@ -50,6 +50,8 @@ _SECTION_MAP: dict[tuple[str, str], str] = {
     ("rig", "power_w"): "power_w",
     ("flrig", "host"): "flrig_host",
     ("flrig", "port"): "flrig_port",
+    ("wsjtx", "host"): "wsjtx_host",
+    ("wsjtx", "port"): "wsjtx_port",
     ("voice_keyer", "vk1"): "vk1",
     ("voice_keyer", "vk2"): "vk2",
     ("voice_keyer", "vk3"): "vk3",
@@ -74,6 +76,8 @@ class Config:
     log_dir: str = _default_log_dir()
     flrig_host: str = "localhost"
     flrig_port: int = 12345
+    wsjtx_host: str = "127.0.0.1"
+    wsjtx_port: int = 2237
     pota_api_base: str = "https://api.pota.app"
     p2p_prefix: str = "US-"  # Default country prefix for the P2P field (e.g. "GB-" for UK ops)
     theme: str = "nord"
@@ -166,6 +170,13 @@ host = {q(cfg.flrig_host)}
 port = {cfg.flrig_port}
 
 
+# ── WSJT-X Integration ─────────────────────────────────────
+[wsjtx]
+
+host = {q(cfg.wsjtx_host)}
+port = {cfg.wsjtx_port}
+
+
 # ── Voice Keyer ─────────────────────────────────────────────
 [voice_keyer]
 
@@ -245,6 +256,12 @@ def load_config() -> Config:
         )
     except (TypeError, ValueError):
         cfg.flrig_port = 12345
+    try:
+        cfg.wsjtx_port = (
+            int(cfg.wsjtx_port) if cfg.wsjtx_port not in (None, "") else 2237
+        )
+    except (TypeError, ValueError):
+        cfg.wsjtx_port = 2237
     for field in (
         "callsign",
         "grid",
@@ -253,6 +270,7 @@ def load_config() -> Config:
         "antenna",
         "log_dir",
         "flrig_host",
+        "wsjtx_host",
         "theme",
         "qrz_username",
         "qrz_password",

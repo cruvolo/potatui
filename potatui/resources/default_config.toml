@@ -64,6 +64,15 @@ host = "localhost"
 port = 12345
 
 
+# ── WSJT-X Integration ─────────────────────────────────────
+# WSJT-X broadcasts QSOs via UDP.  Set the same host/port here as
+# in WSJT-X (Settings → Reporting → UDP Server).
+[wsjtx]
+
+host = "127.0.0.1"
+port = 2237
+
+
 # ── Voice Keyer ─────────────────────────────────────────────
 # CAT commands forwarded to the rig via flrig's rig.cat_string
 # method.  Press F7 in the logger to open the voice keyer panel,

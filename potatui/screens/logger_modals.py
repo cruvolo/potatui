@@ -30,7 +30,7 @@ from potatui.park_db import park_db
 from potatui.session import QSO, Session
 from potatui.space_weather import SpaceWeatherData, fetch_muf
 
-MODES = ["SSB", "CW", "AM", "FM"]
+MODES = ["SSB", "CW", "AM", "FM", "FT8", "FT4"]
 
 # Full default RST values. On focus, the signal digits (after the first char)
 # are selected so the user can type to replace just that part.
@@ -39,6 +39,8 @@ DEFAULT_RST: dict[str, str] = {
     "AM": "59",
     "FM": "59",
     "CW": "599",
+    "FT8": "-10",
+    "FT4": "-10",
 }
 
 
@@ -641,6 +643,91 @@ class FlrigStatusModal(ModalScreen[None]):
 
 
 # ---------------------------------------------------------------------------
+# WSJT-X status modal
+# ---------------------------------------------------------------------------
+
+class WsjtxStatusModal(ModalScreen[None]):
+    CSS = """
+    WsjtxStatusModal { align: center middle; }
+    #wsjtx-status-box {
+        width: 60;
+        height: auto;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    #wsjtx-status-title {
+        text-align: center;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    #wsjtx-status-info {
+        height: auto;
+        border: tall $primary;
+        background: $panel;
+        padding: 0 1;
+    }
+    #wsjtx-status-info Static { width: auto; height: 1; }
+    #wsjtx-status-log-container {
+        height: auto;
+        border: tall $primary;
+        background: $panel;
+        padding: 0 1;
+        margin-top: 1;
+    }
+    #wsjtx-status-log-label {
+        text-style: bold;
+        color: $text-muted;
+        margin-bottom: 0;
+    }
+    #wsjtx-status-scroll { height: 10; }
+    #wsjtx-status-close { height: auto; align: right middle; margin-top: 1; }
+    """
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        online: bool,
+        state_log: list[str],
+        detail_log: list[str],
+    ) -> None:
+        super().__init__()
+        self._host = host
+        self._port = port
+        self._online = online
+        self._state_log = state_log
+        self._detail_log = detail_log
+
+    def compose(self) -> ComposeResult:
+        status = "[green]Online[/green]" if self._online else "[red]Offline[/red]"
+        combined = sorted(self._state_log + self._detail_log, reverse=True)
+        with Container(id="wsjtx-status-box"):
+            yield Static("WSJT-X Connection", id="wsjtx-status-title")
+            with Vertical(id="wsjtx-status-info"):
+                yield Static(f"Host:   {self._host}:{self._port}")
+                yield Static(f"Status: {status}")
+            with Vertical(id="wsjtx-status-log-container"):
+                yield Static("Event Log", id="wsjtx-status-log-label")
+                with ScrollableContainer(id="wsjtx-status-scroll"):
+                    if combined:
+                        for entry in combined:
+                            yield Static(entry)
+                    else:
+                        yield Static("No events logged yet.", classes="muted")
+            with Horizontal(id="wsjtx-status-close"):
+                yield Button("Close", variant="primary", id="wsjtx-status-btn-close")
+
+    @on(Button.Pressed, "#wsjtx-status-btn-close")
+    def on_close(self) -> None:
+        self.dismiss(None)
+
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+
+
+# ---------------------------------------------------------------------------
 # Network status modal
 # ---------------------------------------------------------------------------
 
@@ -668,6 +755,12 @@ class NetworkStatusSnapshot:
     flrig_mode: str
     flrig_state_log: list[str]
     flrig_detail_log: list[str]
+
+    wsjtx_host: str
+    wsjtx_port: int
+    wsjtx_online: bool
+    wsjtx_state_log: list[str]
+    wsjtx_detail_log: list[str]
 
     noaa_ok: bool
     noaa_loaded: bool
@@ -706,6 +799,12 @@ def _net_svc_flrig(online: bool, url: str) -> str:
     dot = _net_status_dot(online)
     status = "[green]Online[/green]" if online else "[red]Offline[/red]"
     return f"{dot}  flrig  {status}  [dim]({url})[/dim]"
+
+
+def _net_svc_wsjtx(online: bool, host: str, port: int) -> str:
+    dot = _net_status_dot(online)
+    status = "[green]Online[/green]" if online else "[red]Offline[/red]"
+    return f"{dot}  WSJT-X  {status}  [dim]({host}:{port})[/dim]"
 
 
 def _net_svc_noaa(ok: bool, loaded: bool) -> str:
@@ -759,11 +858,11 @@ class NetworkStatusModal(ModalScreen[None]):
     }
     #net-errors-scroll { height: 8; }
     #net-status-close { height: auto; align: right middle; margin-top: 1; }
-    #net-svc-flrig, #net-svc-qrz {
+    #net-svc-flrig, #net-svc-qrz, #net-svc-wsjtx {
         width: 1fr;
         height: 1;
     }
-    #net-svc-flrig:hover, #net-svc-qrz:hover {
+    #net-svc-flrig:hover, #net-svc-qrz:hover, #net-svc-wsjtx:hover {
         background: $primary-darken-1;
     }
     """
@@ -805,6 +904,8 @@ class NetworkStatusModal(ModalScreen[None]):
                                  else _net_svc_hamdb(s.hamdb_errors, s.hamdb_used))
                     yield Static(_net_svc_flrig(s.flrig_online, s.flrig_url),
                                  id="net-svc-flrig")
+                    yield Static(_net_svc_wsjtx(s.wsjtx_online, s.wsjtx_host, s.wsjtx_port),
+                                 id="net-svc-wsjtx")
                     yield Static("[dim]○[/dim]  NOAA  [dim]Paused[/dim]")
                 else:
                     yield Static(_net_svc_line("POTA API", s.pota_online))
@@ -812,6 +913,8 @@ class NetworkStatusModal(ModalScreen[None]):
                     yield Static(_net_svc_hamdb(s.hamdb_errors, s.hamdb_used))
                     yield Static(_net_svc_flrig(s.flrig_online, s.flrig_url),
                                  id="net-svc-flrig")
+                    yield Static(_net_svc_wsjtx(s.wsjtx_online, s.wsjtx_host, s.wsjtx_port),
+                                 id="net-svc-wsjtx")
                     yield Static(_net_svc_noaa(s.noaa_ok, s.noaa_loaded))
 
             errors: list[str] = []
@@ -840,6 +943,17 @@ class NetworkStatusModal(ModalScreen[None]):
             mode=s.flrig_mode,
             state_log=s.flrig_state_log,
             detail_log=s.flrig_detail_log,
+        ))
+
+    @on(events.Click, "#net-svc-wsjtx")
+    def on_wsjtx_row_click(self) -> None:
+        s = self._snap
+        self.app.push_screen(WsjtxStatusModal(
+            host=s.wsjtx_host,
+            port=s.wsjtx_port,
+            online=s.wsjtx_online,
+            state_log=s.wsjtx_state_log,
+            detail_log=s.wsjtx_detail_log,
         ))
 
     @on(events.Click, "#net-svc-qrz")
@@ -1510,7 +1624,7 @@ class SolarWeatherModal(ModalScreen[None]):
 # About modal
 # ---------------------------------------------------------------------------
 
-_LAST_UPDATED = "2026-03-29"
+_LAST_UPDATED = "2026-03-31"
 
 _ABOUT_LOGO = [
     "██████╗  ██████╗ ████████╗ █████╗ ████████╗██╗   ██╗██╗",

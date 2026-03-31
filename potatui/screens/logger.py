@@ -33,11 +33,9 @@ from potatui.screens.logger_modals import (
     ChangeOperatorModal,
     ConfirmModal,
     EditQSOModal,
-    FlrigStatusModal,
     ModePickerModal,
     NetworkStatusModal,
     NetworkStatusSnapshot,
-    QrzLogModal,
     SelfSpotModal,
     SessionSummaryModal,
     SetFreqModal,
@@ -53,6 +51,7 @@ from potatui.space_weather import (
     kp_severity,
     kp_traditional,
 )
+from potatui.wsjtx import WsjtxClient
 
 # ---------------------------------------------------------------------------
 # Shift helpers
@@ -129,6 +128,10 @@ class LoggerScreen(Screen):
         self._flrig_online = False
         self._flrig_online_prev: bool | None = None  # tracks previous state for change detection
         self._flrig_log: list[str] = []  # timestamped connection events
+        self._wsjtx = WsjtxClient(config.wsjtx_host, config.wsjtx_port)
+        self._wsjtx_online = False
+        self._wsjtx_online_prev: bool | None = None
+        self._wsjtx_log: list[str] = []  # timestamped connection events
         from potatui.commands import CommandConfig, load_commands
         legacy_vk = [config.vk1, config.vk2, config.vk3, config.vk4, config.vk5]
         self._cmd_config: CommandConfig = load_commands(legacy_vk)
@@ -248,8 +251,10 @@ class LoggerScreen(Screen):
         if self.session.qsos:
             self._rebuild_table()
         self._update_header()
+        self._wsjtx.start()
         self.set_interval(1.0, self._tick_clock)
         self.set_interval(2.0, self._poll_flrig)
+        self.set_interval(2.0, self._poll_wsjtx)
         self.set_interval(30.0, self._check_internet_connectivity)
         self.set_interval(60.0, self._poll_spots_for_self)
         self.set_interval(600.0, self._poll_space_weather)
@@ -551,6 +556,119 @@ class LoggerScreen(Screen):
     def _update_qrz_indicator(self) -> None:
         pass  # QRZ status now shown in NetworkStatusModal only
 
+    @work(exclusive=True, group="wsjtx-poll")
+    async def _poll_wsjtx(self) -> None:
+        now_online = self._wsjtx.is_online()
+        self._wsjtx_online = now_online
+
+        # Log connection state transitions
+        if now_online != self._wsjtx_online_prev:
+            ts = datetime.now().strftime("%H:%M:%S")
+            event = "Connected" if now_online else "Disconnected"
+            self._wsjtx_log.append(f"{ts}  {event}")
+            if len(self._wsjtx_log) > 50:
+                self._wsjtx_log = self._wsjtx_log[-50:]
+            self._wsjtx_online_prev = now_online
+
+        for qso_data in self._wsjtx.drain_qsos():
+            await self._ingest_wsjtx_qso(qso_data)
+
+    async def _ingest_wsjtx_qso(self, data: dict) -> None:
+        """Log a QSO received from WSJT-X into the current session."""
+        callsign = data.get("dx_call", "").strip().upper()
+        if not callsign:
+            return
+
+        freq_hz = data.get("tx_freq_hz", 0)
+        freq_khz = freq_hz / 1000.0
+        band = freq_to_band(freq_khz)
+        mode = data.get("mode", "FT8").upper() or "FT8"
+        rst_sent = data.get("rst_sent", "-10") or "-10"
+        rst_rcvd = data.get("rst_rcvd", "-10") or "-10"
+        name = data.get("name", "")
+        comments = data.get("comments", "")
+        timestamp = data.get("datetime_off")
+
+        contact_grid = data.get("dx_grid", "")
+        distance_km: float | None = None
+        state = ""
+
+        # QRZ/HamDB lookup for name, state, grid, distance (best-effort)
+        info = None
+        if self._qrz.configured:
+            try:
+                info = await self._qrz.lookup(callsign)
+            except Exception:
+                info = None
+        if info is None:
+            try:
+                info = await self._hamdb.lookup(callsign)
+            except Exception:
+                info = None
+
+        if info is not None:
+            name = info.name or name  # prefer lookup; fall back to WSJT-X name
+            if info.grid and not contact_grid:
+                contact_grid = info.grid
+            state = info.state or ""
+
+        # Distance from park to contact (prefer exact lat/lon, fall back to grid)
+        if info is not None and info.lat is not None and info.lon is not None and self._park_latlon:
+            from potatui.qrz import haversine_km
+            distance_km = haversine_km(
+                self._park_latlon[0], self._park_latlon[1], info.lat, info.lon
+            )
+        elif contact_grid and self._park_latlon:
+            from potatui.qrz import grid_to_latlon, haversine_km
+            try:
+                clat, clon = grid_to_latlon(contact_grid)
+                distance_km = haversine_km(
+                    self._park_latlon[0], self._park_latlon[1], clat, clon
+                )
+            except Exception:
+                pass
+
+        qso = self.session.add_qso(
+            callsign=callsign,
+            rst_sent=rst_sent,
+            rst_rcvd=rst_rcvd,
+            freq_khz=freq_khz,
+            band=band,
+            mode=mode,
+            name=name,
+            state=state,
+            notes=comments,
+            operator=self.session.operator,
+            contact_grid=contact_grid,
+            distance_km=distance_km,
+            timestamp_utc=timestamp,
+        )
+
+        if distance_km is not None:
+            self._prop_profile.add_qso(band, distance_km)
+
+        self._rebuild_table()
+
+        for park_ref, log_path in zip(self.session.park_refs, self._log_paths, strict=False):
+            try:
+                append_qso_adif(
+                    qso,
+                    self.session.operator,
+                    self.session.station_callsign,
+                    park_ref,
+                    log_path,
+                    self.session.my_state,
+                    self.session.rig,
+                    self.session.antenna,
+                    self.session.power_w,
+                )
+            except Exception as exc:
+                self.notify(f"ADIF write error: {exc}", severity="error")
+
+        self._save_session()
+        self._update_qso_count()
+        self.notify(f"WSJT-X: logged {callsign}  {freq_khz:.1f} kHz  {mode}")
+
     @on(events.Click, "#hdr-net")
     def on_net_indicator_click(self) -> None:
         snapshot = NetworkStatusSnapshot(
@@ -569,6 +687,11 @@ class LoggerScreen(Screen):
             flrig_mode=self.mode,
             flrig_state_log=self._flrig_log,
             flrig_detail_log=self.flrig.log,
+            wsjtx_host=self.config.wsjtx_host,
+            wsjtx_port=self.config.wsjtx_port,
+            wsjtx_online=self._wsjtx_online,
+            wsjtx_state_log=self._wsjtx_log,
+            wsjtx_detail_log=list(self._wsjtx.log),
             noaa_ok=not (self._solar_data.fetch_error if self._solar_data else True),
             noaa_loaded=self._solar_data is not None,
         )
@@ -689,6 +812,7 @@ class LoggerScreen(Screen):
 
     def on_unmount(self) -> None:
         self._stop_solar_flash()
+        self._wsjtx.stop()
 
     def _add_qso_row(self, qso: QSO, display_num: int) -> None:
         table = self.query_one("#qso-table", DataTable)

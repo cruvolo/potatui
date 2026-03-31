@@ -173,6 +173,19 @@ class SettingsScreen(Screen):
                     yield Input(value=str(self.config.flrig_port), placeholder="12345", id="s-flrig-port", classes="field-input")
                 yield Static("Start flrig before launching pota-log. Leave defaults if running locally.", classes="field-hint")
 
+                # ── WSJT-X ──────────────────────────────────────────────
+                yield Static("WSJT-X Integration", classes="section-heading")
+                yield Static("─" * 60, classes="section-rule")
+
+                with Horizontal(classes="field-row"):
+                    yield Label("Host:", classes="field-label")
+                    yield Input(value=self.config.wsjtx_host, placeholder="127.0.0.1", id="s-wsjtx-host", classes="field-input")
+
+                with Horizontal(classes="field-row"):
+                    yield Label("Port:", classes="field-label")
+                    yield Input(value=str(self.config.wsjtx_port), placeholder="2237", id="s-wsjtx-port", classes="field-input")
+                yield Static("Match the UDP server settings in WSJT-X (Settings → Reporting). Leave defaults if running locally.", classes="field-hint")
+
                 # ── QRZ ─────────────────────────────────────────────────
                 yield Static("QRZ (Optional)", classes="section-heading")
                 yield Static("─" * 60, classes="section-rule")
@@ -228,6 +241,7 @@ class SettingsScreen(Screen):
         rig = val("s-rig")
         antenna = val("s-antenna")
         flrig_host = val("s-flrig-host") or "localhost"
+        wsjtx_host = val("s-wsjtx-host") or "127.0.0.1"
         qrz_user = val("s-qrz-user")
         qrz_pass = self.query_one("#s-qrz-pass", Input).value  # preserve as-is
         qrz_url = val("s-qrz-url") or "https://xmldata.qrz.com/xml/current/"
@@ -242,6 +256,11 @@ class SettingsScreen(Screen):
         except ValueError:
             return "flrig port must be a number (e.g. 12345)."
 
+        try:
+            wsjtx_port = int(val("s-wsjtx-port") or "2237")
+        except ValueError:
+            return "WSJT-X port must be a number (e.g. 2237)."
+
         offline_mode = self.query_one("#s-offline-mode", Checkbox).value
 
         cfg = Config(
@@ -255,6 +274,8 @@ class SettingsScreen(Screen):
             power_w=power_w,
             flrig_host=flrig_host,
             flrig_port=flrig_port,
+            wsjtx_host=wsjtx_host,
+            wsjtx_port=wsjtx_port,
             qrz_username=qrz_user,
             qrz_password=qrz_pass,
             qrz_api_url=qrz_url,
