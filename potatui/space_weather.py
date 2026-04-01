@@ -110,12 +110,12 @@ async def fetch_kp() -> list[KpReading]:
         resp = await client.get(_KP_URL)
         resp.raise_for_status()
         data = resp.json()
-    # data is [[datetime_str, kp_str, ...], ...], first row is header
+    # data is a list of dicts: {"time_tag": "...", "Kp": 3.0, ...}
     readings: list[KpReading] = []
-    for row in data[1:]:
+    for row in data:
         try:
-            readings.append(KpReading(time_utc=row[0], kp=float(row[1])))
-        except (IndexError, ValueError):
+            readings.append(KpReading(time_utc=row["time_tag"], kp=float(row["Kp"])))
+        except (KeyError, ValueError):
             continue
     # newest first, cap at 8
     readings.reverse()
@@ -131,7 +131,7 @@ async def fetch_sfi() -> float | None:
         resp.raise_for_status()
         data = resp.json()
     _log.debug("fetch_sfi: %.0f ms", (time.perf_counter() - _t0) * 1000)
-    return float(data["Flux"])
+    return float(data[0]["flux"])
 
 
 async def fetch_alerts() -> list[SpaceWeatherAlert]:
