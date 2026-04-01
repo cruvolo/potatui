@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import math
 import threading
 import time
@@ -160,7 +161,6 @@ class QRZClient:
         The HTTP fetch and XML parsing are run in a thread so the event loop
         stays free to handle UI rendering and input during the request.
         """
-        import asyncio
         if not self.configured:
             return None
 

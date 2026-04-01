@@ -124,7 +124,11 @@ def run() -> None:
         # Textual animations add render work with no value on ConPTY.
         os.environ.setdefault("TEXTUAL_ANIMATIONS", "none")
         # SelectorEventLoop has lower overhead than the default ProactorEventLoop
-        # (IOCP) for TUI I/O patterns.
+        # (IOCP) for the short, frequent socket reads that Textual and the QRZ/
+        # HamDB thread-pool pattern produce.  Trade-off: ProactorEventLoop is
+        # required for asyncio subprocess pipes; any subprocess interaction here
+        # (Commander) uses subprocess.run in a thread, not asyncio subprocesses,
+        # so this is safe for the current codebase.
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     if not _acquire_instance_lock():

@@ -161,6 +161,7 @@ class LoggerScreen(Screen):
         self._offline: bool = config.offline_mode  # True = skip all internet calls
         self._offline_manual: bool = config.offline_mode  # True = user explicitly set offline
         self._current_utc_date = datetime.utcnow().date()
+        self._clock_tick_count: int = 0
         self._log_paths = self._make_log_paths()
         self._json_path = self._make_json_path()
 
@@ -462,7 +463,7 @@ class LoggerScreen(Screen):
         self._update_qso_count()
         # On Windows/ConPTY each widget update is expensive. These two status
         # indicators change slowly, so throttle them to every 5s on Windows.
-        self._clock_tick_count = getattr(self, "_clock_tick_count", 0) + 1
+        self._clock_tick_count += 1
         if sys.platform != "win32" or self._clock_tick_count % 5 == 0:
             self._update_last_spotted_bar()
             self._update_shift_indicator()
