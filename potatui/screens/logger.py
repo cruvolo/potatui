@@ -1508,6 +1508,9 @@ class LoggerScreen(Screen):
     @work(exclusive=True, group="qrz-lookup-selected")
     async def action_qrz_lookup_selected(self) -> None:
         """Ctrl+L (table mode) — callsign lookup for the selected QSO (QRZ, or HamDB fallback)."""
+        if self._offline:
+            self.notify("Offline mode — callsign lookup unavailable", severity="warning")
+            return
         qso_id = self._qso_id_from_table_cursor()
         if qso_id is None:
             return
@@ -1678,6 +1681,9 @@ class LoggerScreen(Screen):
     @work(exclusive=True, group="qrz-backfill")
     async def action_qrz_backfill(self) -> None:
         """Ctrl+B — look up callsign info for all QSOs with empty name (QRZ, or HamDB fallback)."""
+        if self._offline:
+            self.notify("Offline mode — callsign lookup unavailable", severity="warning")
+            return
         targets = [q for q in self.session.qsos if not q.name]
         if not targets:
             self.notify("All contacts already have names")
