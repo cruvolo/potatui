@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
 import socket
 import sys
 
@@ -41,6 +43,7 @@ class PotaLogApp(App):
 
     TITLE = "Potatui"
     SUB_TITLE = "Parks on the Air Logger"
+    MAX_REFRESH_RATE = 10  # 60fps default is overkill and hammers ConPTY on Windows
 
     def on_mount(self) -> None:
         self._config = load_config()
@@ -113,6 +116,15 @@ class PotaLogApp(App):
 
 
 def run() -> None:
+    if sys.platform == "win32":
+        # Reduce ConPTY encoding overhead.
+        os.environ.setdefault("PYTHONUTF8", "1")
+        # Textual animations add render work with no value on ConPTY.
+        os.environ.setdefault("TEXTUAL_ANIMATIONS", "none")
+        # SelectorEventLoop has lower overhead than the default ProactorEventLoop
+        # (IOCP) for TUI I/O patterns.
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
     if not _acquire_instance_lock():
         print("Potatui is already running.", file=sys.stderr)
         sys.exit(1)
