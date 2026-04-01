@@ -21,6 +21,8 @@ class HamDbClient:
     def __init__(self) -> None:
         self._cache: dict[str, QRZInfo | None] = {}
         self._error_log: list[str] = []
+        # Persistent client reuses TLS connections across lookups.
+        self._http = httpx.AsyncClient(timeout=10)
 
     @property
     def error_log(self) -> list[str]:
@@ -45,8 +47,7 @@ class HamDbClient:
     async def _do_lookup(self, callsign: str) -> QRZInfo | None:
         url = _HAMDB_URL.format(call=callsign.lower())
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                r = await client.get(url)
+            r = await self._http.get(url)
             data = r.json()
             hamdb = data.get("hamdb", {})
             if hamdb.get("messages", {}).get("status") == "NOT_FOUND":
