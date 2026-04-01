@@ -6,10 +6,15 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
+
+from potatui.log import get_logger
+
+_log = get_logger("pota_api")
 
 PARK_REF_RE = re.compile(r"^[A-Z]{1,4}-[A-Z0-9]{1,6}$", re.IGNORECASE)
 
@@ -72,9 +77,12 @@ async def lookup_park(ref: str, base_url: str) -> ParkInfo | None:
     if park_db.loaded:
         local = park_db.lookup(ref)
         if local:
+            _log.debug("lookup_park %s: local cache hit", ref)
             return local
 
     url = f"{base_url.rstrip('/')}/park/{ref.upper()}"
+    _log.debug("lookup_park %s: fetching from API", ref)
+    _t0 = time.perf_counter()
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(url)
@@ -104,7 +112,7 @@ async def lookup_park(ref: str, base_url: str) -> ParkInfo | None:
                     park_lon: float | None = float(lon_s) if lon_s else None
                 except (ValueError, TypeError):
                     park_lat, park_lon = None, None
-                return ParkInfo(
+                park = ParkInfo(
                     reference=data.get("reference", ref).upper(),
                     name=data.get("name", "Unknown Park"),
                     location=location,
@@ -114,14 +122,17 @@ async def lookup_park(ref: str, base_url: str) -> ParkInfo | None:
                     lat=park_lat,
                     lon=park_lon,
                 )
-    except Exception:
-        pass
+                _log.debug("lookup_park %s: API returned in %.0f ms", ref, (time.perf_counter() - _t0) * 1000)
+                return park
+    except Exception as exc:
+        _log.debug("lookup_park %s: failed in %.0f ms — %s", ref, (time.perf_counter() - _t0) * 1000, exc)
     return None
 
 
 async def fetch_spots(base_url: str) -> list[Spot]:
     """Fetch current POTA activator spots."""
     url = f"{base_url.rstrip('/')}/spot/activator"
+    _t0 = time.perf_counter()
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(url)
@@ -151,8 +162,10 @@ async def fetch_spots(base_url: str) -> list[Spot]:
                     )
                 except Exception:
                     continue
+            _log.debug("fetch_spots: %.0f ms, %d spots", (time.perf_counter() - _t0) * 1000, len(spots))
             return spots
-    except Exception:
+    except Exception as exc:
+        _log.debug("fetch_spots: failed in %.0f ms — %s", (time.perf_counter() - _t0) * 1000, exc)
         return []
 
 
@@ -199,8 +212,10 @@ async def fetch_location_pins(base_url: str) -> dict[str, tuple[float, float]]:
     """
     global _location_pins
     if _location_pins is not None:
+        _log.debug("fetch_location_pins: process cache hit (%d entries)", len(_location_pins))
         return _location_pins
     url = f"{base_url.rstrip('/')}/locations"
+    _t0 = time.perf_counter()
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(url)
@@ -215,9 +230,10 @@ async def fetch_location_pins(base_url: str) -> dict[str, tuple[float, float]]:
                     except (KeyError, ValueError, TypeError):
                         continue
                 _location_pins = result
+                _log.debug("fetch_location_pins: %.0f ms, %d entries", (time.perf_counter() - _t0) * 1000, len(result))
                 return result
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("fetch_location_pins: failed in %.0f ms — %s", (time.perf_counter() - _t0) * 1000, exc)
     return {}
 
 

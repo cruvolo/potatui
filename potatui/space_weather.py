@@ -7,10 +7,15 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
+
+from potatui.log import get_logger
+
+_log = get_logger("space_weather")
 
 _KP_URL = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
 _ALERTS_URL = "https://services.swpc.noaa.gov/products/alerts.json"
@@ -100,6 +105,7 @@ def kp_traditional(kp: float) -> str:
 
 async def fetch_kp() -> list[KpReading]:
     """Fetch the last 8 Kp readings, newest first."""
+    _t0 = time.perf_counter()
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(_KP_URL)
         resp.raise_for_status()
@@ -113,20 +119,24 @@ async def fetch_kp() -> list[KpReading]:
             continue
     # newest first, cap at 8
     readings.reverse()
+    _log.debug("fetch_kp: %.0f ms", (time.perf_counter() - _t0) * 1000)
     return readings[:8]
 
 
 async def fetch_sfi() -> float | None:
     """Fetch the current 10.7cm solar flux index (SFI)."""
+    _t0 = time.perf_counter()
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(_SFI_URL)
         resp.raise_for_status()
         data = resp.json()
+    _log.debug("fetch_sfi: %.0f ms", (time.perf_counter() - _t0) * 1000)
     return float(data["Flux"])
 
 
 async def fetch_alerts() -> list[SpaceWeatherAlert]:
     """Fetch active geomagnetic alerts from the past 8 hours."""
+    _t0 = time.perf_counter()
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(_ALERTS_URL)
         resp.raise_for_status()
@@ -170,6 +180,7 @@ async def fetch_alerts() -> list[SpaceWeatherAlert]:
             message=message,
         ))
 
+    _log.debug("fetch_alerts: %.0f ms, %d active", (time.perf_counter() - _t0) * 1000, len(alerts))
     return alerts
 
 
@@ -182,8 +193,10 @@ async def fetch_muf(lat: float, lon: float) -> MufData:
     if cached is not None:
         result, fetched_at = cached
         if _time.monotonic() - fetched_at < _MUF_CACHE_SECONDS:
+            _log.debug("fetch_muf (%.4f, %.4f): in-memory cache hit", lat, lon)
             return result
 
+    _t0 = time.perf_counter()
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(_MUF_URL, params={"grid": f"{lat},{lon}"})
         resp.raise_for_status()
@@ -195,6 +208,7 @@ async def fetch_muf(lat: float, lon: float) -> MufData:
     stale = (_time.time() - ts) > _MUF_STALE_SECONDS
     result = MufData(mufd=mufd, fof2=fof2, ts=ts, stale=stale)
     _muf_cache[key] = (result, _time.monotonic())
+    _log.debug("fetch_muf (%.4f, %.4f): %.0f ms, mufd=%.1f stale=%s", lat, lon, (time.perf_counter() - _t0) * 1000, mufd, stale)
     return result
 
 
@@ -258,6 +272,7 @@ async def fetch_kp_forecast() -> KpForecastData | None:
 
 async def fetch_space_weather() -> SpaceWeatherData:
     """Fetch Kp index, SFI, alerts, and 3-day forecast; never raises."""
+    _t0 = time.perf_counter()
     results = await asyncio.gather(
         fetch_kp(), fetch_alerts(), fetch_sfi(), fetch_kp_forecast(),
         return_exceptions=True,
@@ -277,6 +292,14 @@ async def fetch_space_weather() -> SpaceWeatherData:
 
     kp_current = kp_history[0].kp if kp_history else None
 
+    _log.debug(
+        "fetch_space_weather: %.0f ms total (error=%s, kp=%s, sfi=%s, alerts=%d)",
+        (time.perf_counter() - _t0) * 1000,
+        fetch_error,
+        kp_current,
+        sfi,
+        len(active_alerts),
+    )
     return SpaceWeatherData(
         kp_current=kp_current,
         kp_history=kp_history,

@@ -213,6 +213,15 @@ class SettingsScreen(Screen):
                     yield Checkbox("", value=self.config.offline_mode, id="s-offline-mode")
                 yield Static("Disable QRZ lookups, live spots, and self-spotting. Use at parks with no internet.", classes="field-hint")
 
+                # ── Advanced ────────────────────────────────────────────
+                yield Static("Advanced", classes="section-heading")
+                yield Static("─" * 60, classes="section-rule")
+
+                with Horizontal(classes="field-row"):
+                    yield Label("Debug Logging:", classes="field-label")
+                    yield Checkbox("", value=self.config.debug_logging, id="s-debug-logging")
+                yield Static("Write performance and API timing logs to potatui_debug.log in the log directory.", classes="field-hint")
+
                 # ── Config path ─────────────────────────────────────────
                 yield Static("─" * 60, classes="section-rule")
                 yield Static(f"Config file: {CONFIG_PATH}", classes="field-hint", id="config-path-hint")
@@ -262,6 +271,7 @@ class SettingsScreen(Screen):
             return "WSJT-X port must be a number (e.g. 2237)."
 
         offline_mode = self.query_one("#s-offline-mode", Checkbox).value
+        debug_logging = self.query_one("#s-debug-logging", Checkbox).value
 
         cfg = Config(
             callsign=callsign,
@@ -280,6 +290,7 @@ class SettingsScreen(Screen):
             qrz_password=qrz_pass,
             qrz_api_url=qrz_url,
             offline_mode=offline_mode,
+            debug_logging=debug_logging,
             # vk1–vk5 preserved as-is; commands are now managed via the Commander (F7).
             vk1=self.config.vk1, vk2=self.config.vk2, vk3=self.config.vk3,
             vk4=self.config.vk4, vk5=self.config.vk5,
@@ -299,6 +310,9 @@ class SettingsScreen(Screen):
 
         save_config(self.config)
         self.config.log_dir_path.mkdir(parents=True, exist_ok=True)
+
+        from potatui.log import setup_logging
+        setup_logging(self.config.log_dir_path, enabled=self.config.debug_logging)
 
         if self.first_run:
             # Continue to normal startup flow — dismiss triggers the callback.
