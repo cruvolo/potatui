@@ -61,6 +61,7 @@ _SECTION_MAP: dict[tuple[str, str], str] = {
     ("pota", "p2p_prefix"): "p2p_prefix",
     ("app", "theme"): "theme",
     ("app", "offline_mode"): "offline_mode",
+    ("app", "debug_logging"): "debug_logging",
 }
 
 
@@ -85,6 +86,7 @@ class Config:
     qrz_password: str = ""
     qrz_api_url: str = "https://xmldata.qrz.com/xml/current/"
     offline_mode: bool = False
+    debug_logging: bool = False
     vk1: str = "PB01;"
     vk2: str = "PB02;"
     vk3: str = "PB03;"
@@ -201,6 +203,7 @@ p2p_prefix = {q(cfg.p2p_prefix)}
 
 theme = {q(cfg.theme)}
 offline_mode = {str(cfg.offline_mode).lower()}
+debug_logging = {str(cfg.debug_logging).lower()}
 """
     CONFIG_PATH.write_text(content, encoding="utf-8")
 

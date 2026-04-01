@@ -46,6 +46,9 @@ class PotaLogApp(App):
         self._config = load_config()
         self._config.log_dir_path.mkdir(parents=True, exist_ok=True)
 
+        from potatui.log import setup_logging
+        setup_logging(self._config.log_dir_path, enabled=self._config.debug_logging)
+
         if self._config.theme:
             self.theme = self._config.theme
 

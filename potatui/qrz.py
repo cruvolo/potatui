@@ -5,11 +5,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import math
+import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
 import httpx
+
+from potatui.log import get_logger
+
+_log = get_logger("qrz")
 
 _QRZ_URL = "https://xmldata.qrz.com/xml/current/"
 _AGENT = "Potatui/1.0"
@@ -50,6 +56,7 @@ class QRZClient:
         self._cache: dict[str, QRZInfo | None] = {}
         self._error_log: list[str] = []
         self._last_ok: bool | None = None  # None = not yet tested
+        self._http = httpx.Client(timeout=10, headers={"User-Agent": _AGENT})
 
     @property
     def configured(self) -> bool:
@@ -106,23 +113,24 @@ class QRZClient:
     # Auth
     # ------------------------------------------------------------------
 
-    async def _login(self) -> bool:
-        """Authenticate and cache the session key. Returns True on success."""
+    def _login(self) -> bool:
+        """Authenticate and cache the session key. Runs in a thread. Returns True on success."""
+        _t0 = time.perf_counter()
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                r = await client.get(
-                    self._api_url,
-                    params={
-                        "username": self._username,
-                        "password": self._password,
-                        "agent": _AGENT,
-                    },
-                )
+            r = self._http.get(
+                self._api_url,
+                params={
+                    "username": self._username,
+                    "password": self._password,
+                    "agent": _AGENT,
+                },
+            )
             root = ET.fromstring(r.text)
             key = self._parse_session_key(root)
             if key:
                 self._session_key = key
                 self._mark_ok()
+                _log.debug("qrz login: ok in %.0f ms", (time.perf_counter() - _t0) * 1000)
                 return True
             # Extract error message for logging
             session = self._find(root, "Session")
@@ -132,9 +140,11 @@ class QRZClient:
                 if err_el is not None and err_el.text:
                     err_text = err_el.text.strip()
             self._log_error(f"Login failed: {err_text or 'no session key returned'}")
+            _log.debug("qrz login: failed in %.0f ms — %s", (time.perf_counter() - _t0) * 1000, err_text or "no session key")
             return False
         except Exception as exc:
             self._log_error(f"Login error: {exc}")
+            _log.debug("qrz login: error in %.0f ms — %s", (time.perf_counter() - _t0) * 1000, exc)
             return False
 
     # ------------------------------------------------------------------
@@ -142,37 +152,48 @@ class QRZClient:
     # ------------------------------------------------------------------
 
     async def lookup(self, callsign: str) -> QRZInfo | None:
-        """Look up a callsign. Returns None if not configured, not found, or on error."""
+        """Look up a callsign. Returns None if not configured, not found, or on error.
+
+        The HTTP fetch and XML parsing are run in a thread so the event loop
+        stays free to handle UI rendering and input during the request.
+        """
         if not self.configured:
             return None
 
         callsign = callsign.upper().split("/")[0]   # strip /P, /MM, etc.
 
         if callsign in self._cache:
+            _log.debug("qrz lookup %s: session cache hit", callsign)
             return self._cache[callsign]
 
+        info = await asyncio.to_thread(self._fetch_blocking, callsign)
+        self._cache[callsign] = info
+        return info
+
+    def _fetch_blocking(self, callsign: str) -> QRZInfo | None:
+        """Synchronous fetch — login if needed, look up, retry once on session expiry."""
         if not self._session_key:
-            if not await self._login():
+            if not self._login():
                 return None
 
-        info = await self._do_lookup(callsign)
+        info = self._do_lookup(callsign)
 
         # Session may have expired — try re-login once
         if info is None and self._session_key:
             self._session_key = None
-            if await self._login():
-                info = await self._do_lookup(callsign)
+            if self._login():
+                info = self._do_lookup(callsign)
 
-        self._cache[callsign] = info
         return info
 
-    async def _do_lookup(self, callsign: str) -> QRZInfo | None:
+    def _do_lookup(self, callsign: str) -> QRZInfo | None:
+        """Fetch and parse a callsign. Runs in a thread."""
+        _t0 = time.perf_counter()
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                r = await client.get(
-                    self._api_url,
-                    params={"s": self._session_key, "callsign": callsign},
-                )
+            r = self._http.get(
+                self._api_url,
+                params={"s": self._session_key, "callsign": callsign},
+            )
             root = ET.fromstring(r.text)
 
             # Refresh session key if provided
@@ -190,9 +211,13 @@ class QRZClient:
                         err_text = err_el.text.strip()
                         if "not found" in err_text.lower():
                             self._mark_ok()  # Callsign not in QRZ — still a valid API response
+                            _log.debug("qrz lookup %s: not found in %.0f ms", callsign, (time.perf_counter() - _t0) * 1000)
+                        else:
+                            _log.debug("qrz lookup %s: session error in %.0f ms — %s", callsign, (time.perf_counter() - _t0) * 1000, err_text)
                         # else: session/auth error — caller handles retry; don't change status
                         return None
                 self._mark_ok()  # Valid response with no callsign and no error
+                _log.debug("qrz lookup %s: no data in %.0f ms", callsign, (time.perf_counter() - _t0) * 1000)
                 return None
 
             def t(tag: str) -> str:
@@ -210,7 +235,7 @@ class QRZClient:
             lon = float(lon_s) if lon_s else None
 
             self._mark_ok()
-            return QRZInfo(
+            info = QRZInfo(
                 callsign=callsign,
                 fname=fname,
                 name=name,
@@ -221,8 +246,11 @@ class QRZClient:
                 lat=lat,
                 lon=lon,
             )
+            _log.debug("qrz lookup %s: found in %.0f ms", callsign, (time.perf_counter() - _t0) * 1000)
+            return info
         except Exception as exc:
             self._log_error(f"Lookup {callsign}: {exc}")
+            _log.debug("qrz lookup %s: error in %.0f ms — %s", callsign, (time.perf_counter() - _t0) * 1000, exc)
             return None
 
 

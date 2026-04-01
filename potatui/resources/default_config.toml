@@ -107,3 +107,7 @@ api_base = "https://api.pota.app"
 # Textual theme name.  Changed automatically when you switch
 # themes with the command palette (Ctrl+backslash).
 theme = "nord"
+
+# Write debug/performance logs to potatui_debug.log in the log directory.
+# Enable when troubleshooting slowness or API issues.
+debug_logging = false

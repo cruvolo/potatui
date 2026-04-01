@@ -14,6 +14,10 @@ from typing import TYPE_CHECKING
 import httpx
 from platformdirs import user_data_dir
 
+from potatui.log import get_logger
+
+_log = get_logger("park_db")
+
 if TYPE_CHECKING:
     from potatui.pota_api import ParkInfo
 
@@ -38,8 +42,10 @@ class ParkDb:
         from potatui.pota_api import ParkInfo
 
         if not PARKS_CSV.exists():
+            _log.debug("park_db.load: CSV not found, skipping")
             return
 
+        _t0 = time.perf_counter()
         parks: dict[str, ParkInfo] = {}
         try:
             with open(PARKS_CSV, newline="", encoding="utf-8") as f:
@@ -79,10 +85,12 @@ class ParkDb:
                         lat=park_lat,
                         lon=park_lon,
                     )
-        except Exception:
+        except Exception as exc:
+            _log.debug("park_db.load: failed in %.0f ms — %s", (time.perf_counter() - _t0) * 1000, exc)
             return
 
         self._parks = parks
+        _log.debug("park_db.load: %.0f ms, %d parks", (time.perf_counter() - _t0) * 1000, len(parks))
 
     def _init_builtins(self) -> None:
         """Populate the class-level builtins dict once."""
@@ -163,18 +171,24 @@ class ParkDb:
 
 async def download_parks() -> tuple[bool, str]:
     """Download the POTA all-parks CSV. Returns (success, message)."""
+    _t0 = time.perf_counter()
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
             resp = await client.get(PARKS_CSV_URL)
             resp.raise_for_status()
             PARKS_CSV.write_bytes(resp.content)
-        return True, f"Downloaded {len(resp.content) // 1024} KB"
+        kb = len(resp.content) // 1024
+        _log.debug("download_parks: %.0f ms, %d KB", (time.perf_counter() - _t0) * 1000, kb)
+        return True, f"Downloaded {kb} KB"
     except httpx.HTTPStatusError as e:
+        _log.debug("download_parks: HTTP %s in %.0f ms", e.response.status_code, (time.perf_counter() - _t0) * 1000)
         return False, f"HTTP {e.response.status_code}"
     except httpx.TimeoutException:
+        _log.debug("download_parks: timed out after %.0f ms", (time.perf_counter() - _t0) * 1000)
         return False, "Request timed out"
     except Exception as e:
+        _log.debug("download_parks: error in %.0f ms — %s", (time.perf_counter() - _t0) * 1000, e)
         return False, str(e)
 
 
