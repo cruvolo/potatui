@@ -173,6 +173,10 @@ class SettingsScreen(Screen):
                     yield Input(value=str(self.config.flrig_port), placeholder="12345", id="s-flrig-port", classes="field-input")
                 yield Static("Start flrig before launching pota-log. Leave defaults if running locally.", classes="field-hint")
 
+                with Horizontal(classes="field-row"):
+                    yield Button("Configure Mode Translations…", id="btn-mode-translations")
+                yield Static("Map your rig's mode strings to Potatui modes (e.g. CW-U → CW, PKTUSB → FT8).", classes="field-hint")
+
                 # ── WSJT-X ──────────────────────────────────────────────
                 yield Static("WSJT-X Integration", classes="section-heading")
                 yield Static("─" * 60, classes="section-rule")
@@ -314,11 +318,7 @@ class SettingsScreen(Screen):
         from potatui.log import setup_logging
         setup_logging(self.config.log_dir_path, enabled=self.config.debug_logging)
 
-        if self.first_run:
-            # Continue to normal startup flow — dismiss triggers the callback.
-            self.dismiss()
-        else:
-            self.query_one("#save-status", Static).update("Saved.")
+        self.dismiss()
 
     # ── actions / events ───────────────────────────────────────────────
 
@@ -335,3 +335,8 @@ class SettingsScreen(Screen):
     @on(Button.Pressed, "#btn-cancel")
     def on_cancel(self) -> None:
         self.dismiss()
+
+    @on(Button.Pressed, "#btn-mode-translations")
+    def on_mode_translations(self) -> None:
+        from potatui.screens.mode_translations import ModeTranslationsScreen
+        self.app.push_screen(ModeTranslationsScreen(self.config))

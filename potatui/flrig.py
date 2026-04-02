@@ -9,6 +9,8 @@ import threading
 import xmlrpc.client
 from datetime import datetime
 
+from potatui.mode_map import ModeTranslations
+
 
 class _TimeoutTransport(xmlrpc.client.Transport):
     """Transport with a configurable socket timeout (important on Windows)."""
@@ -47,7 +49,12 @@ _LOG_MAX = 100
 
 
 class FlrigClient:
-    def __init__(self, host: str = "localhost", port: int = 12345) -> None:
+    def __init__(
+        self,
+        host: str = "localhost",
+        port: int = 12345,
+        mode_translations: ModeTranslations | None = None,
+    ) -> None:
         self._host = host
         self._port = port
         self._url = f"http://{host}:{port}"
@@ -61,6 +68,7 @@ class FlrigClient:
         self._cat_lock = threading.Lock()   # guards _cat_proxy
         self.log: list[str] = []            # diagnostic log, newest appended last
         self.cat_in_flight = False          # True while a CAT command is being sent
+        self._translations: ModeTranslations | None = mode_translations
 
     # ------------------------------------------------------------------
     # Logging helper
@@ -137,12 +145,30 @@ class FlrigClient:
         """Return current mode as our canonical string, or None if offline."""
         with self._lock:
             try:
-                raw = self._get_proxy().rig.get_mode()
-                return MODE_MAP.get(str(raw).upper(), str(raw))
+                raw = str(self._get_proxy().rig.get_mode())
+                if self._translations:
+                    return self._translations.rig_to_canonical.get(raw, raw)
+                return MODE_MAP.get(raw.upper(), raw)
             except Exception as exc:
                 self._append_log(f"poll get_mode FAIL  {type(exc).__name__}: {exc}")
                 self._reset()
                 return None
+
+    def get_modes(self) -> list[str] | None:
+        """Return list of all mode strings supported by the connected rig, or None if offline."""
+        with self._lock:
+            try:
+                result = self._get_proxy().rig.get_modes()
+                return [str(m) for m in result] if result else []
+            except Exception as exc:
+                self._append_log(f"get_modes FAIL  {type(exc).__name__}: {exc}")
+                self._reset()
+                return None
+
+    def update_translations(self, t: ModeTranslations) -> None:
+        """Replace the active mode translation table (thread-safe)."""
+        with self._lock:
+            self._translations = t
 
     def set_frequency(self, freq_hz: float) -> bool:
         """Set VFO frequency in Hz. Returns True on success."""
@@ -158,9 +184,20 @@ class FlrigClient:
     def set_mode(self, mode: str, freq_khz: float | None = None) -> bool:
         """Set mode by canonical name. Returns True on success.
 
-        freq_khz is used to pick USB vs LSB for SSB: >=10 MHz → USB, <10 MHz → LSB.
+        freq_khz is used to pick USB vs LSB for SSB when no explicit outbound
+        mapping is configured (or when the configured SSB mapping is blank).
         """
-        flrig_mode = _canonical_to_flrig(mode, freq_khz)
+        if self._translations:
+            mapped = self._translations.canonical_to_rig.get(mode.upper(), "")
+            if mode.upper() == "SSB" and not mapped:
+                # blank SSB entry → keep automatic USB/LSB-by-freq behaviour
+                flrig_mode = _canonical_to_flrig(mode, freq_khz)
+            elif mapped:
+                flrig_mode = mapped
+            else:
+                flrig_mode = _canonical_to_flrig(mode, freq_khz)
+        else:
+            flrig_mode = _canonical_to_flrig(mode, freq_khz)
         with self._lock:
             try:
                 self._get_proxy().rig.set_mode(flrig_mode)

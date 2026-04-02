@@ -16,6 +16,7 @@ A terminal user interface (TUI) for logging Parks on the Air (POTA) activations.
 - **Self-spotting** — post yourself to the POTA network from within the app. Your most recent spot is displayed live on the logging screen, showing who spotted you, how long ago, and any comments — colour-coded green/yellow/grey by age.
 - **Offline park database** — a local copy of the full POTA parks list is downloaded on first launch and refreshed every 30 days. Park lookups work even without internet. Toggle full offline mode with Ctrl+N.
 - **Solar/space weather indicator** — live NOAA Kp geomagnetic index shown in the header. Flashes red and fires a warning toast when any active space weather alert is issued. Click the pill to see the last 24h Kp history, a 3-day Kp forecast (colour-coded by severity), full alert text, and MUF/foF2 propagation prediction for your park's grid square (via [prop.kc2g.com](https://prop.kc2g.com/)). Polls every 10 minutes; skipped in offline mode.
+- **Rig mode translations** — every rig labels its modes differently (CW-U, CW-L, PKTUSB, USB-D…). The mode translation editor (Settings → flrig section) lets you map your rig's mode strings to Potatui's canonical modes in both directions. Click "Fetch from flrig" to auto-populate from the rig's own mode list.
 - **Commander** — fire CAT commands or run console commands via configurable slots with custom labels and keyboard shortcuts. Open the full panel with F7.
 - **Resume activations** — on launch, pick any previous session to continue from where you left off.
 - **ADIF export** — every QSO is appended to an ADIF file immediately. Full rewrite on edit, delete, or session end. Ready to upload to pota.app.
@@ -380,10 +381,11 @@ Opens the in-app settings editor from the setup screen or the logger screen. All
 - Log file directory
 - Rig name, antenna, power
 - flrig host and port
+- Rig mode translations (via "Configure Mode Translations…" button)
 - P2P park prefix (default `US-` — change to `VK-`, `GB-`, etc. for non-US operators)
 - QRZ username and password
 
-Press **Ctrl+S** or click **Save Settings** to save. Changes are written immediately to the config file.
+Press **Ctrl+S** or click **Save** to save and close. Changes are written immediately to the config file.
 
 ---
 
@@ -421,6 +423,27 @@ Start flrig before launching Potatui. The app polls every 2 seconds and:
 If flrig is not running, everything works normally. Frequency and band are taken from whatever is in the Freq entry field. The flrig connection status is visible by clicking the `net` pill in the header.
 
 When you QSY to a spot (F5) or set a run frequency (F2), Potatui calls flrig to tune the radio automatically. If flrig is offline a warning toast is shown but the frequency is still updated in the display.
+
+### Rig Mode Translations
+
+Every rig labels its modes differently — your rig might use `CW-U`/`CW-L` instead of `CW`, `PKTUSB` instead of `FT8`, or `USB-D` for digital modes. The **Mode Translations** editor lets you configure how those mode strings map to Potatui's modes in both directions:
+
+- **Inbound** — when flrig reports a mode string, what Potatui displays (e.g. `CW-U` → `CW`)
+- **Outbound** — when you select a mode in Potatui, what string is sent to flrig (e.g. `CW` → `CW-U`)
+
+Open it from **Settings (F8) → flrig Integration → Configure Mode Translations…**
+
+Click **Fetch from flrig** to automatically populate the table from your rig's own mode list. Mappings are auto-guessed and can be edited. For SSB, leave the outbound field blank to keep automatic USB/LSB selection by frequency.
+
+Translations are stored at:
+
+| Platform | Path |
+|----------|------|
+| Linux    | `~/.config/potatui/mode_translations.json` |
+| macOS    | `~/Library/Application Support/potatui/mode_translations.json` |
+| Windows  | `%APPDATA%\potatui\mode_translations.json` |
+
+If no translation file exists, built-in defaults are used as a fallback.
 
 ---
 

@@ -28,6 +28,7 @@ from textual.widgets._input import Selection
 from potatui.adif import append_qso_adif, freq_to_band, session_file_stem, write_adif
 from potatui.config import Config
 from potatui.flrig import FlrigClient
+from potatui.mode_map import load_translations
 from potatui.propagation import PropProfile
 from potatui.screens.logger_modals import (
     AboutModal,
@@ -125,7 +126,7 @@ class LoggerScreen(Screen):
         self.band = freq_to_band(self.freq_khz)
         self.mode = mode
         self.park_names = park_names
-        self.flrig = FlrigClient(config.flrig_host, config.flrig_port)
+        self.flrig = FlrigClient(config.flrig_host, config.flrig_port, mode_translations=load_translations())
         self._flrig_online = False
         self._flrig_online_prev: bool | None = None  # tracks previous state for change detection
         self._flrig_log: list[str] = []  # timestamped connection events
@@ -1652,7 +1653,8 @@ class LoggerScreen(Screen):
         from potatui.screens.settings import SettingsScreen
 
         def _on_settings_closed(_: object) -> None:
-            """Sync offline flags if the user toggled offline mode in settings."""
+            """Sync offline flags and reload mode translations after settings close."""
+            self.flrig.update_translations(load_translations())
             new_offline = self.config.offline_mode
             if new_offline == self._offline_manual:
                 return
