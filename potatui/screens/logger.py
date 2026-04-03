@@ -1404,6 +1404,11 @@ class LoggerScreen(Screen):
                 event.stop()
                 self._fire_console_slot(slot.label or f"Console {i}", slot.command)
                 return
+        for i, slot in enumerate(self._cmd_config.cw_slots, 1):
+            if slot.shortcut and slot.shortcut.lower() == key and slot.command:
+                event.stop()
+                self._fire_cw_slot(slot.label or f"CW {i}", slot.command)
+                return
 
         # ── Tab-wrap within the entry form ─────────────────────────────
         focused = self.focused
@@ -1645,9 +1650,49 @@ class LoggerScreen(Screen):
         except Exception as e:
             self.app.call_from_thread(self.notify, f"Error: {e}", severity="error")
 
+    def _get_cw_context(self) -> dict[str, str]:
+        """Return current logger state for CW macro resolution."""
+        from potatui.screens.commander import _apply_cut
+        try:
+            their_call = self.query_one("#f-callsign", Input).value.strip().upper()
+        except Exception:
+            their_call = ""
+        try:
+            rst = self.query_one("#f-rst-sent", Input).value.strip()
+        except Exception:
+            rst = ""
+        try:
+            state = self.query_one("#f-state", Input).value.strip()
+        except Exception:
+            state = ""
+        operator = self.session.operator or self.config.callsign
+        parks = " ".join(self.session.park_refs) if self.session.park_refs else ""
+        return {
+            "OP": operator,
+            "CALL": self.config.callsign,
+            "PARK": parks,
+            "THEIRCALL": their_call,
+            "RST": rst,
+            "RSTCUT": _apply_cut(rst),
+            "STATE": state,
+        }
+
+    @work(thread=True)
+    def _fire_cw_slot(self, label: str, macro_text: str) -> None:
+        from potatui.screens.commander import resolve_cw_macros
+        context = self._get_cw_context()
+        resolved = resolve_cw_macros(macro_text, context)
+        ok = self.flrig.send_cw(resolved)
+        if ok:
+            self.app.call_from_thread(
+                self.notify, f"{label}: {resolved}", severity="information"
+            )
+        else:
+            self.app.call_from_thread(self.notify, "flrig not connected", severity="error")
+
     def action_commander(self) -> None:
         from potatui.screens.commander import CommanderModal
-        self.app.push_screen(CommanderModal(self._cmd_config, self.flrig))
+        self.app.push_screen(CommanderModal(self._cmd_config, self.flrig, self._get_cw_context))
 
     def action_settings(self) -> None:
         from potatui.screens.settings import SettingsScreen

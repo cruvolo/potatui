@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (c) 2026 MonkeybutlerCJH (https://github.com/MonkeybutlerCJH)
 
-"""Commander modal — fire and configure CAT and console command slots."""
+"""Commander modal — fire and configure CAT, console, and CW keyer slots."""
 
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from textual import on, work
@@ -24,6 +25,33 @@ from potatui.commands import (
 
 if TYPE_CHECKING:
     from potatui.flrig import FlrigClient
+
+# CW cut number substitutions: digit → cut number character
+_CUT_MAP: dict[str, str] = {"9": "N"}
+
+_CW_VARIABLES = (
+    "{OP}       Your operator callsign\n"
+    "{CALL}     Station callsign\n"
+    "{PARK}     Active park reference(s)\n"
+    "{THEIRCALL} Callsign in the entry field\n"
+    "{RST}      RST sent value\n"
+    "{RSTCUT}   RST with cut numbers (9→N)\n"
+    "{STATE}    State/province in the entry field"
+)
+
+
+def _apply_cut(rst: str) -> str:
+    """Convert RST to cut numbers — first digit preserved, last two digits cut."""
+    if len(rst) <= 1:
+        return rst
+    return rst[0] + "".join(_CUT_MAP.get(c, c) for c in rst[1:])
+
+
+def resolve_cw_macros(text: str, context: dict[str, str]) -> str:
+    """Substitute {VARIABLE} placeholders in CW text using the provided context."""
+    for key, val in context.items():
+        text = text.replace(f"{{{key}}}", val)
+    return text
 
 
 class CommanderModal(ModalScreen[None]):
@@ -91,6 +119,10 @@ class CommanderModal(ModalScreen[None]):
         margin-top: 1;
     }
 
+    .cw-hint {
+        height: 9;
+    }
+
     #capture-sink {
         display: none;
     }
@@ -118,17 +150,25 @@ class CommanderModal(ModalScreen[None]):
     }
     """
 
-    def __init__(self, cmd_config: CommandConfig, flrig: FlrigClient) -> None:
+    def __init__(
+        self,
+        cmd_config: CommandConfig,
+        flrig: FlrigClient,
+        get_cw_context: Callable[[], dict[str, str]] | None = None,
+    ) -> None:
         super().__init__()
         self._cmd_config = cmd_config
         self._flrig = flrig
-        self._capture_state: tuple[str, int] | None = None  # ("cat"|"console", 1–5)
+        self._get_cw_context = get_cw_context
+        self._capture_state: tuple[str, int] | None = None  # ("cat"|"console"|"cw", 1–5)
         # Mirror shortcut values so edits are tracked separately from saved config
         self._shortcuts: dict[tuple[str, int], str] = {}
         for i, s in enumerate(cmd_config.cat_slots, 1):
             self._shortcuts[("cat", i)] = s.shortcut
         for i, s in enumerate(cmd_config.console_slots, 1):
             self._shortcuts[("console", i)] = s.shortcut
+        for i, s in enumerate(cmd_config.cw_slots, 1):
+            self._shortcuts[("cw", i)] = s.shortcut
 
     def compose(self) -> ComposeResult:
         with Container(id="cmd-box"):
@@ -145,6 +185,12 @@ class CommanderModal(ModalScreen[None]):
                     yield Static(
                         "Shell commands run in the background. You are responsible for cross-platform compatibility.",
                         classes="tab-hint",
+                    )
+                with TabPane("CW Keyer", id="pane-cw"):
+                    yield from self._compose_slots("cw", self._cmd_config.cw_slots)
+                    yield Static(
+                        f"Sent via flrig cwio. Variables:\n{_CW_VARIABLES}",
+                        classes="tab-hint cw-hint",
                     )
             # Hidden focus sink — receives focus during key-capture mode so
             # key events aren't swallowed by Input widgets.
@@ -284,6 +330,11 @@ class CommanderModal(ModalScreen[None]):
                 self._set_status(f"Fired: {label}  ({cmd})", error=False)
             else:
                 self._set_status("flrig not connected", error=True)
+        elif slot_type == "cw":
+            context = self._get_cw_context() if self._get_cw_context else {}
+            resolved = resolve_cw_macros(cmd, context)
+            self._set_status(f"Sending CW: {resolved}", error=False)
+            self._run_cw(label, resolved)
         else:
             self._set_status(f"Running: {label}…", error=False)
             self._run_console(label, cmd)
@@ -304,10 +355,19 @@ class CommanderModal(ModalScreen[None]):
         except Exception as e:
             self.app.call_from_thread(self._set_status, f"Error: {e}", True)
 
+    @work(thread=True)
+    def _run_cw(self, label: str, text: str) -> None:
+        ok = self._flrig.send_cw(text)
+        if ok:
+            self.app.call_from_thread(self._set_status, f"CW sent: {label}", False)
+        else:
+            self.app.call_from_thread(self._set_status, "flrig not connected or cwio failed", True)
+
     def _save(self) -> None:
         """Collect all inputs, validate, persist, and dismiss."""
         cat_slots: list[CommandSlot] = []
         console_slots: list[CommandSlot] = []
+        cw_slots: list[CommandSlot] = []
         all_keys: dict[str, str] = {}  # normalised key → owner description
 
         def collect(slot_type: str, out: list[CommandSlot]) -> str | None:
@@ -334,9 +394,14 @@ class CommanderModal(ModalScreen[None]):
         if err:
             self._set_status(err, error=True)
             return
+        err = collect("cw", cw_slots)
+        if err:
+            self._set_status(err, error=True)
+            return
 
         self._cmd_config.cat_slots = cat_slots
         self._cmd_config.console_slots = console_slots
+        self._cmd_config.cw_slots = cw_slots
         save_commands(self._cmd_config)
         self.dismiss(None)
 

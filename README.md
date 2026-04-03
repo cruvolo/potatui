@@ -17,7 +17,7 @@ A terminal user interface (TUI) for logging Parks on the Air (POTA) activations.
 - **Offline park database** — a local copy of the full POTA parks list is downloaded on first launch and refreshed every 30 days. Park lookups work even without internet. Toggle full offline mode with Ctrl+N.
 - **Solar/space weather indicator** — live NOAA Kp geomagnetic index shown in the header. Flashes red and fires a warning toast when any active space weather alert is issued. Click the pill to see the last 24h Kp history, a 3-day Kp forecast (colour-coded by severity), full alert text, and MUF/foF2 propagation prediction for your park's grid square (via [prop.kc2g.com](https://prop.kc2g.com/)). Polls every 10 minutes; skipped in offline mode.
 - **Rig mode translations** — every rig labels its modes differently (CW-U, CW-L, PKTUSB, USB-D…). The mode translation editor (Settings → flrig section) lets you map your rig's mode strings to Potatui's canonical modes in both directions. Click "Fetch from flrig" to auto-populate from the rig's own mode list.
-- **Commander** — fire CAT commands or run console commands via configurable slots with custom labels and keyboard shortcuts. Open the full panel with F7.
+- **Commander** — fire CAT commands, console commands, or CW macros via configurable slots with custom labels and keyboard shortcuts. Open the full panel with F7.
 - **Resume activations** — on launch, pick any previous session to continue from where you left off.
 - **ADIF export** — every QSO is appended to an ADIF file immediately. Full rewrite on edit, delete, or session end. Ready to upload to pota.app.
 - **Multi-park and multi-op support** — enter multiple park refs at setup (e.g. `US-1234,US-5678`). Change operator callsign mid-activation (Ctrl+O) for club or guest-op scenarios; station and operator callsigns are tracked separately in the ADIF.
@@ -297,13 +297,9 @@ Set your frequency accurately with F2 before spotting.
 
 ## Commander (F7)
 
-Supports both **CAT commands** (sent to the rig via flrig) and **console commands** (run as shell commands on your computer).
+Supports **CAT commands** (sent to the rig via flrig), **console commands** (run as shell commands), and **CW macros** (keyed via flrig's CW interface).
 
-- **F7** — opens the Commander panel with two tabs: Fire and Configure.
-- **Fire tab** — shows all configured slots with their labels. Click a button or use its assigned shortcut to fire.
-- **Configure tab** — set the label, command, and keyboard shortcut for each slot.
-
-Shortcuts are configured per-slot (e.g. `ctrl+1`, `f9`) and fire from anywhere on the logger screen. Reserved logger keys cannot be assigned.
+Each tab has 5 configurable slots. Each slot has a label, a command/text field, an optional keyboard shortcut, and a fire button. Shortcuts fire from anywhere on the logger screen — reserved logger keys cannot be assigned.
 
 Commander configuration is stored separately from the main config file, at:
 
@@ -320,6 +316,29 @@ Commander configuration is stored separately from the main config file, at:
 | Yaesu FT-710     | `PB01;` – `PB05;`   |
 | Yaesu FT-991A    | `PB01;` – `PB05;`   |
 | Other rigs       | Check your manual   |
+
+### CW Keyer tab
+
+CW macros are sent via flrig's `cwio_text` / `cwio_send` interface. The text field supports dynamic variables that are substituted at send time:
+
+| Variable      | Value                                          |
+|---------------|------------------------------------------------|
+| `{OP}`        | Your operator callsign                         |
+| `{CALL}`      | Station callsign                               |
+| `{PARK}`      | Active park reference(s)                       |
+| `{THEIRCALL}` | Callsign currently in the entry field          |
+| `{RST}`       | RST value from the RST Sent field              |
+| `{RSTCUT}`    | RST with cut numbers (9 → N)                   |
+| `{STATE}`     | State/province from the State field            |
+
+**Example macros:**
+
+| Label   | Text                                     |
+|---------|------------------------------------------|
+| CQ      | `CQ POTA {OP}`                           |
+| TU      | `{THEIRCALL} TU UR {RSTCUT} {STATE}`     |
+| QRZ     | `TU DE {OP} QRZ`                         |
+| P2P     | `{THEIRCALL} TU UR {RSTCUT} PARK {PARK}` |
 
 ---
 

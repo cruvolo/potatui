@@ -39,6 +39,9 @@ class CommandConfig:
     console_slots: list[CommandSlot] = field(
         default_factory=lambda: [CommandSlot() for _ in range(NUM_SLOTS)]
     )
+    cw_slots: list[CommandSlot] = field(
+        default_factory=lambda: [CommandSlot() for _ in range(NUM_SLOTS)]
+    )
 
 
 def load_commands(legacy_vk: list[str] | None = None) -> CommandConfig:
@@ -67,6 +70,7 @@ def load_commands(legacy_vk: list[str] | None = None) -> CommandConfig:
         return CommandConfig(
             cat_slots=_parse(data.get("cat_slots", [])),
             console_slots=_parse(data.get("console_slots", [])),
+            cw_slots=_parse(data.get("cw_slots", [])),
         )
 
     # First launch — migrate from legacy vk1–vk5 config fields.
@@ -93,6 +97,10 @@ def save_commands(cfg: CommandConfig) -> None:
         "console_slots": [
             {"label": s.label, "command": s.command, "shortcut": s.shortcut}
             for s in cfg.console_slots
+        ],
+        "cw_slots": [
+            {"label": s.label, "command": s.command, "shortcut": s.shortcut}
+            for s in cfg.cw_slots
         ],
     }
     COMMANDS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")

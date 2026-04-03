@@ -114,7 +114,10 @@ potatui/
                    FlrigStatusModal, SelfSpotModal, SetFreqModal,
                    ChangeOperatorModal, WawaModal, SolarWeatherModal
     spots.py       Live POTA spots browser
-    commander.py   CommanderModal — fire and configure CAT/console command slots (F7)
+    commander.py   CommanderModal — fire and configure CAT/console/CW command slots (F7)
+                   Module-level helpers: `_apply_cut(rst)` (9→N cut numbers, first digit preserved),
+                   `resolve_cw_macros(text, context)` (substitutes {VARIABLE} placeholders).
+                   Accepts optional `get_cw_context: Callable[[], dict[str, str]]` from LoggerScreen.
     park_update.py ParkDbModal — download/refresh local park database prompt
     mode_translations.py  ModeTranslationsScreen — edit rig↔potatui mode maps (via Settings → flrig section)
                    Two sections: Inbound (rig mode → canonical, dynamic rows) and Outbound
@@ -235,7 +238,7 @@ LoggerScreen(session, config, park_names, mode="SSB", freq_khz=14200.0)
 
 **Exponential back-off**: `_flrig_retry_delay` starts at 2s and doubles each failed poll (cap 30s). `_flrig_next_poll` (monotonic) gates whether `_poll_flrig` actually runs, even though `set_interval(2.0)` keeps firing. On reconnect, delay resets to 2s.
 
-**CAT / voice keyer timeout avoidance**: flrig's XML-RPC server blocks completely during voice playback, causing poll calls to time out even though flrig is healthy. `FlrigClient` uses a separate `_cat_proxy` / `_cat_lock` for CAT commands (`send_cat_string`) and sets `cat_in_flight = True` for the duration. The poll handler skips marking flrig offline when `flrig.cat_in_flight` is True — only transitions to offline when a poll fails *and* no CAT command is in flight.
+**CAT / CW timeout avoidance**: flrig's XML-RPC server blocks completely during CW keying or voice playback, causing poll calls to time out even though flrig is healthy. `FlrigClient` uses a separate `_cat_proxy` / `_cat_lock` for CAT commands (`send_cat_string`) and CW (`send_cw`) and sets `cat_in_flight = True` for the duration. The poll handler skips marking flrig offline when `flrig.cat_in_flight` is True — only transitions to offline when a poll fails *and* no CAT/CW command is in flight.
 
 ## WSJT-X Integration
 
@@ -349,24 +352,33 @@ After confirming a QSY from the spots screen, the logger screen receives:
 
 ## Commander (F7)
 
-The voice keyer has been replaced by the Commander — a two-tab modal for CAT commands and console (shell) commands.
+The voice keyer has been replaced by the Commander — a three-tab modal for CAT commands, console (shell) commands, and CW keyer macros.
 
 **Data model** (`potatui/commands.py`):
 - `CommandSlot(label, command, shortcut)` — one slot. `shortcut` is a Textual key name (e.g. `"ctrl+1"`).
-- `CommandConfig(cat_slots, console_slots)` — 5 slots each.
+- `CommandConfig(cat_slots, console_slots, cw_slots)` — 5 slots each.
 - Persisted to `~/.config/potatui/commands.json` via `save_commands()` / `load_commands()`.
 - On first launch, `load_commands(legacy_vk=[...])` migrates old `config.vk1`–`vk5` values into CAT slots.
 
 **CommanderModal** (`potatui/screens/commander.py`):
-- Two tabs: **CAT Commands** (sent via `flrig.send_cat_string()`) and **Console Commands** (shell commands run via `subprocess.run(..., shell=True, timeout=30)` in a thread worker).
-- Each slot row has: label input, command input, shortcut display, **Set** button (enters key-capture mode), **▶** fire button.
+- Three tabs: **CAT Commands** (sent via `flrig.send_cat_string()`), **Console Commands** (shell commands via `subprocess.run(..., shell=True, timeout=30)`), **CW Keyer** (sent via `flrig.send_cw()`).
+- Each slot row has: label input, command/text input, shortcut display, **Set** button (enters key-capture mode), **▶** fire button.
 - **Key capture**: clicking Set focuses a hidden `Button(id="capture-sink")` to absorb keypresses, then records the next key as the shortcut. Del/Backspace clears; Escape cancels.
 - Shortcuts validated against `RESERVED_KEYS` and checked for duplicates within the modal before saving.
 - **Save & Close** persists; **Close without saving** discards edits.
+- CW tab accepts optional `get_cw_context: Callable[[], dict[str, str]]` from LoggerScreen for live macro resolution.
+
+**CW macros** — variables substituted at send time:
+- `{OP}` operator callsign, `{CALL}` station callsign, `{PARK}` active park ref(s)
+- `{THEIRCALL}` callsign field, `{RST}` RST sent field, `{RSTCUT}` RST with 9→N cut (first digit preserved), `{STATE}` state field
+
+**flrig CW send** (`flrig.py`): `send_cw(text)` calls `rig.cwio_text(text)` then `rig.cwio_send(1)` via the CAT proxy (5s timeout). Sets `cat_in_flight = True` for the duration.
 
 **Logger shortcut dispatch** (`logger.py`):
-- `on_key` scans `_cmd_config.cat_slots` and `_cmd_config.console_slots` on every keypress.
-- Match → `_fire_cat_slot()` (calls `flrig.send_cat_string`, notifies) or `_fire_console_slot()` (`@work(thread=True)`, notifies on completion).
+- `on_key` scans `_cmd_config.cat_slots`, `_cmd_config.console_slots`, and `_cmd_config.cw_slots` on every keypress.
+- Match → `_fire_cat_slot()`, `_fire_console_slot()`, or `_fire_cw_slot()` (all `@work(thread=True)`).
+- `_fire_cw_slot()` calls `_get_cw_context()` to resolve macros before sending.
+- `_get_cw_context()` reads live form fields (callsign, RST sent, state) and session data (operator, park refs, station callsign).
 - `_cmd_config` loaded via `load_commands(legacy_vk)` in `__init__`.
 
 **RESERVED_KEYS** (`commands.py`): `f1`–`f10`, `ctrl+s`, `ctrl+d`, `ctrl+n`, `ctrl+o`, `escape`, `enter`, `space`, `tab`, `backspace` — users cannot assign these as shortcuts.

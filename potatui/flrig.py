@@ -245,6 +245,39 @@ class FlrigClient:
         finally:
             self.cat_in_flight = False
 
+    def send_cw(self, text: str) -> bool:
+        """Send CW text via flrig cwio_text + cwio_send. Returns True on success.
+
+        Uses the CAT proxy (5 s timeout) so a slow or in-progress keyer
+        transmission does not disturb the poll proxy.  Sets cat_in_flight
+        for the duration so the poll handler does not transition to offline.
+        """
+        self._append_log(f"cwio_text({text!r}) sending…")
+        self.cat_in_flight = True
+        try:
+            with self._cat_lock:
+                try:
+                    proxy = self._get_cat_proxy()
+                    proxy.rig.cwio_text(text)
+                    proxy.rig.cwio_send(1)
+                    self._append_log("cwio_send OK")
+                    return True
+                except TimeoutError as exc:
+                    self._append_log(f"cwio_send timeout (treated as OK)  {exc}")
+                    self._reset_cat()
+                    return True
+                except xmlrpc.client.Fault as exc:
+                    self._append_log(
+                        f"cwio_send Fault  code={exc.faultCode} {exc.faultString!r}"
+                    )
+                    return False
+                except Exception as exc:
+                    self._append_log(f"cwio_send FAIL  {type(exc).__name__}: {exc}")
+                    self._reset_cat()
+                    return False
+        finally:
+            self.cat_in_flight = False
+
     def is_online(self) -> bool:
         """Quick connectivity check."""
         return self.get_frequency() is not None
