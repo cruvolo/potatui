@@ -1108,6 +1108,118 @@ class SelfSpotModal(ModalScreen[None]):
 
 
 # ---------------------------------------------------------------------------
+# P2P Spot Modal
+# ---------------------------------------------------------------------------
+
+
+class P2pSpotModal(ModalScreen[None]):
+    CSS = """
+    P2pSpotModal { align: center middle; }
+    #p2p-spot-box {
+        width: 62;
+        height: auto;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    #p2p-spot-title { text-align: center; text-style: bold; margin-bottom: 1; }
+    #p2p-spot-offline-note { color: $warning; margin-bottom: 1; height: auto; }
+    .p2p-spot-row { height: auto; margin-bottom: 1; }
+    .p2p-spot-label { width: 14; padding-top: 1; color: $text-muted; }
+    .p2p-spot-input { width: 1fr; }
+    #p2p-spot-btns { align: right middle; height: auto; margin-top: 1; }
+    """
+
+    def __init__(
+        self,
+        activator: str,
+        spotter: str,
+        park_ref: str,
+        freq_khz: float,
+        mode: str,
+        comments: str,
+        pota_api_base: str,
+        offline: bool = False,
+    ) -> None:
+        super().__init__()
+        self._activator = activator
+        self._spotter = spotter
+        self._park_ref = park_ref
+        self._freq_khz = freq_khz
+        self._mode = mode
+        self._comments = comments
+        self._api_base = pota_api_base
+        self._offline = offline
+
+    def compose(self) -> ComposeResult:
+        with Container(id="p2p-spot-box"):
+            yield Static("Spot P2P Activator", id="p2p-spot-title")
+            if self._offline:
+                yield Static("  Spotting unavailable in offline mode.", id="p2p-spot-offline-note")
+            with Horizontal(classes="p2p-spot-row"):
+                yield Label("Activator:", classes="p2p-spot-label")
+                yield Input(value=self._activator, id="p-activator", classes="p2p-spot-input", disabled=self._offline)
+            with Horizontal(classes="p2p-spot-row"):
+                yield Label("Spotter:", classes="p2p-spot-label")
+                yield Input(value=self._spotter, id="p-spotter", classes="p2p-spot-input", disabled=self._offline)
+            with Horizontal(classes="p2p-spot-row"):
+                yield Label("Frequency:", classes="p2p-spot-label")
+                yield Input(value=f"{self._freq_khz:.1f}", id="p-freq", classes="p2p-spot-input", disabled=self._offline)
+            with Horizontal(classes="p2p-spot-row"):
+                yield Label("Mode:", classes="p2p-spot-label")
+                yield Input(value=self._mode, id="p-mode", classes="p2p-spot-input", disabled=self._offline)
+            with Horizontal(classes="p2p-spot-row"):
+                yield Label("Park Ref:", classes="p2p-spot-label")
+                yield Input(value=self._park_ref, id="p-park", classes="p2p-spot-input", disabled=self._offline)
+            with Horizontal(classes="p2p-spot-row"):
+                yield Label("Comments:", classes="p2p-spot-label")
+                yield Input(value=self._comments, id="p-comments", classes="p2p-spot-input", disabled=self._offline)
+            with Horizontal(id="p2p-spot-btns"):
+                yield Button("Post Spot", variant="primary", id="p-post", disabled=self._offline)
+                yield Button("Cancel", id="p-cancel")
+
+    @on(Button.Pressed, "#p-post")
+    def on_post(self) -> None:
+        self._do_spot()
+
+    @on(Button.Pressed, "#p-cancel")
+    def on_cancel(self) -> None:
+        self.dismiss(None)
+
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+        elif event.key == "enter" and not self._offline:
+            self._do_spot()
+
+    @work
+    async def _do_spot(self) -> None:
+        from potatui.pota_api import self_spot
+
+        activator = self.query_one("#p-activator", Input).value.strip().upper()
+        spotter = self.query_one("#p-spotter", Input).value.strip().upper()
+        freq_str = self.query_one("#p-freq", Input).value.strip()
+        mode = self.query_one("#p-mode", Input).value.strip()
+        park = self.query_one("#p-park", Input).value.strip().upper()
+        comments = self.query_one("#p-comments", Input).value.strip()
+
+        try:
+            freq_khz = float(freq_str)
+        except ValueError:
+            self.app.notify("Invalid frequency", severity="error")
+            return
+
+        success, msg = await self_spot(
+            self._api_base, activator, spotter, freq_khz, park, mode, comments
+        )
+        if success:
+            self.app.notify(msg, severity="information")
+        else:
+            self.app.notify(f"Spot failed: {msg}", severity="error")
+        self.dismiss(None)
+
+
+# ---------------------------------------------------------------------------
 # Set Run Frequency Modal
 # ---------------------------------------------------------------------------
 

@@ -38,6 +38,7 @@ from potatui.screens.logger_modals import (
     ModePickerModal,
     NetworkStatusModal,
     NetworkStatusSnapshot,
+    P2pSpotModal,
     SelfSpotModal,
     SessionSummaryModal,
     SetFreqModal,
@@ -107,6 +108,7 @@ class LoggerScreen(Screen):
         Binding("d", "delete_qso", "Delete"),
         Binding("l", "qrz_lookup_selected", "Lookup"),
         Binding("b", "qrz_backfill", "Backfill All"),
+        Binding("s", "p2p_spot_selected", "P2P Spot"),
     ]
 
     CSS_PATH = "logger.tcss"
@@ -930,7 +932,7 @@ class LoggerScreen(Screen):
         in_table = self._table_focused
         if action in ("set_freq", "mode_picker", "goto_spots", "self_spot", "commander", "settings", "edit_last_qso", "end_session", "change_operator"):
             return not in_table
-        if action in ("delete_qso", "qrz_lookup_selected", "qrz_backfill"):
+        if action in ("delete_qso", "qrz_lookup_selected", "qrz_backfill", "p2p_spot_selected"):
             return in_table
         return True
 
@@ -1812,6 +1814,31 @@ class LoggerScreen(Screen):
             return
         self._update_qrz_indicator()
         self.notify(f"Updated {updated} of {len(targets)} contact(s)")
+
+    def action_p2p_spot_selected(self) -> None:
+        """S (table mode) — open P2P spot dialog for the selected QSO."""
+        qso_id = self._qso_id_from_table_cursor()
+        if qso_id is None:
+            return
+        qso = next((q for q in self.session.qsos if q.qso_id == qso_id), None)
+        if qso is None or not qso.is_p2p or not qso.p2p_ref:
+            self.notify("Selected QSO is not a P2P contact", severity="warning")
+            return
+        our_parks = ", ".join(self.session.park_refs)
+        state = self.session.my_state
+        comments = f"TU from {our_parks} {state}".strip()
+        self.app.push_screen(
+            P2pSpotModal(
+                activator=qso.callsign,
+                spotter=self.session.operator,
+                park_ref=qso.p2p_ref,
+                freq_khz=qso.freq_khz,
+                mode=qso.mode,
+                comments=comments,
+                pota_api_base=self.config.pota_api_base,
+                offline=self._offline,
+            )
+        )
 
     # ------------------------------------------------------------------
     # Called from SpotsScreen when user QSYs to a spot
